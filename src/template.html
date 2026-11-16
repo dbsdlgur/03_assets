@@ -4,62 +4,52 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="format-detection" content="telephone=no,email=no,address=no,date=no">
-<title>개인정보</title>
+<title>Money</title>
 <link rel="stylesheet" href="template.css">
 </head>
 <body>
-<main>
+<main class="sheet-main">
  <header class="app-header">
- <div class="top">
-  <div class="segmented" role="group" aria-label="전체 구분">
-   <button type="button" data-view="self" aria-pressed="true">본인 <span class="count"></span></button>
-   <button type="button" data-view="family" aria-pressed="false">가족 <span class="count"></span></button>
-   <button type="button" data-view="other" aria-pressed="false">기타 <span class="count"></span></button>
+  <div class="top">
+   <div class="tab-bar">
+    <div role="tablist" aria-label="메뉴">
+     <button role="tab" id="tab-money" aria-controls="panel-money" aria-selected="true" data-tab="money">Money</button>
+    </div>
+   </div>
+   <div class="save-meta">
+    <span id="updatedAt"></span>
+    <span id="saveStatus" role="status" aria-live="polite" hidden></span>
+   </div>
+   <div class="actions"><button id="saveBtn" type="button" class="primary">저장</button></div>
   </div>
-  <div class="save-meta">
-   <span id="updatedAt"></span>
-   <span id="saveStatus" role="status" aria-live="polite" hidden></span>
-  </div>
-  <div class="actions"><button id="saveBtn" type="button" class="primary">저장</button></div>
- </div>
- <div class="tab-bar">
- <div role="tablist" aria-label="메뉴">
-  <button role="tab" id="tab-passwords" aria-controls="panel-passwords" data-tab="passwords">비밀번호</button>
-  <button role="tab" id="tab-diary" aria-controls="panel-diary" data-tab="diary">일기</button>
-  <button role="tab" id="tab-history" aria-controls="panel-history" data-tab="history">이력</button>
-  <button role="tab" id="tab-sizes" aria-controls="panel-sizes" data-tab="sizes">사이즈</button>
- </div>
- </div>
  </header>
- <div role="tabpanel" id="panel-sizes" aria-labelledby="tab-sizes"></div>
- <div role="tabpanel" id="panel-diary" aria-labelledby="tab-diary">
-  <section class="section" aria-label="일기">
-   <input id="diarySearch" class="list-search" type="search" aria-label="일기 검색" placeholder="제목·이름·비고·내용 검색" autocomplete="off">
-   <p id="diaryAddStatus" class="password-add-status" role="status" hidden></p>
-   <div data-table="diary"></div>
-  </section>
- </div>
- <div role="tabpanel" id="panel-history" aria-labelledby="tab-history">
-  <section class="section" aria-label="이력">
-   <input id="historySearch" class="list-search" type="search" aria-label="이력 검색" placeholder="날짜·제목·내용·비고 검색" autocomplete="off">
-   <p id="historyAddStatus" class="password-add-status" role="status" hidden></p>
-   <div data-table="history"></div>
-  </section>
- </div>
- <div role="tabpanel" id="panel-passwords" aria-labelledby="tab-passwords">
-  <section class="section" aria-label="비밀번호 목록">
-   <input id="pwSearch" class="list-search" type="search" aria-label="검색" placeholder="사이트·ID·분류·링크·비고 검색" autocomplete="off">
-   <p id="passwordAddStatus" class="password-add-status" role="status" hidden></p>
-   <div data-table="passwordsSelf" aria-label="본인 비밀번호"></div>
-   <div data-table="passwordsFamily" aria-label="가족 비밀번호"></div>
-   <div data-table="passwordsOther" aria-label="기타 비밀번호"></div>
-  </section>
- </div>
+ <section role="tabpanel" id="panel-money" aria-labelledby="tab-money" class="money-panel">
+  <div class="sheet-toolbar">
+   <div class="formula-bar">
+    <span id="cellRef" class="cell-ref" aria-label="선택된 셀">A1</span>
+    <span class="fx-label" aria-hidden="true">fx</span>
+    <input id="formulaInput" type="text" autocomplete="off" spellcheck="false" aria-label="셀 수식 또는 값" placeholder="값 또는 수식 입력 (예: =A1+B1, =SUM(A1:A5))">
+   </div>
+   <div class="sheet-actions" role="toolbar" aria-label="행과 열 편집">
+    <button id="addRowBtn" type="button">+ 행</button>
+    <button id="addColBtn" type="button">+ 열</button>
+    <button id="delRowBtn" type="button">행 삭제</button>
+    <button id="delColBtn" type="button">열 삭제</button>
+    <button id="clearCellBtn" type="button">지우기</button>
+   </div>
+  </div>
+  <div id="sheetWrap" class="sheet-wrap" tabindex="0" aria-label="Money 스프레드시트"></div>
+  <div class="sheet-tabs-bar">
+   <div id="sheetTabs" class="sheet-tabs" role="tablist" aria-label="시트 목록"></div>
+   <div class="sheet-tab-actions">
+    <button id="addSheetBtn" type="button" title="새 시트 추가">+ 시트</button>
+    <button id="renameSheetBtn" type="button" title="현재 시트 이름 변경">이름 변경</button>
+    <button id="delSheetBtn" type="button" class="danger" title="현재 시트 삭제">시트 삭제</button>
+   </div>
+  </div>
+ </section>
 </main>
 <script id="vault-pure" src="pure.js"></script>
-<script src="modal.js"></script>
-<script src="size-face.js"></script>
-<script src="sizes.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

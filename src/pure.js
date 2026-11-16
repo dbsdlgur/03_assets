@@ -1,95 +1,317 @@
+// 순수 시트·수식 계산 모듈. Node 단위 테스트에서도 그대로 불러와 실행할 수 있다.
+(function (root) {
+ function indexToCol(index) {
+  let n = index;
+  let col = '';
+  while (n >= 0) {
+   col = String.fromCharCode(65 + (n % 26)) + col;
+   n = Math.floor(n / 26) - 1;
+  }
+  return col;
+ }
 
-// 화면과 무관한 계산(S-4.1, S-4.2, S-5). Node 단위 테스트가 이 블록만 떼어 실행한다.
-window.VaultPure = (() => {
- // 출금일까지 남은 날. 이번 달이 지났으면 다음 달, 그 달에 없는 날이면 말일.
- function dday(payDay, today = new Date()) {
-  const day = Number(payDay);
-  if (payDay === '' || payDay == null || !Number.isInteger(day) || day < 1 || day > 31) return '';
-  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const due = offset => {
-   const last = new Date(start.getFullYear(), start.getMonth() + offset + 1, 0).getDate();
-   return new Date(start.getFullYear(), start.getMonth() + offset, Math.min(day, last));
-  };
-  let target = due(0);
-  if (target < start) target = due(1);
-  const n = Math.round((target - start) / 86400000);
-  return n === 0 ? 'D-day' : 'D-' + n;
+ function colToIndex(col) {
+  const upper = String(col).toUpperCase();
+  let n = 0;
+  for (let i = 0; i < upper.length; i++) {
+   const code = upper.charCodeAt(i);
+   if (code < 65 || code > 90) return -1;
+   n = n * 26 + (code - 64);
+  }
+  return n - 1;
  }
- const formatMoney = n => (Number(n) || 0).toLocaleString('en-US');
- const parseMoney = text => Number(String(text ?? '').replace(/[^\d]/g, '')) || 0;
- function isValidDate(text) {
-  if (text === '') return true;
-  const m = /^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?$/.exec(text);
-  if (!m) return false;
-  if (m[2] === undefined) return true;
-  const [y, mo, d] = [Number(m[1]), Number(m[2]), m[3] && Number(m[3])];
-  if (mo < 1 || mo > 12) return false;
-  return m[3] === undefined || (d >= 1 && d <= new Date(y, mo, 0).getDate());
- }
- // 이력은 연·연월·날짜와 점(.) 표기, 물결표로 연결한 기간을 받는다.
- function historyDatePart(text) {
-  const m = /^(\d{4})(?:([.-])(\d{1,2})(?:\2(\d{1,2}))?)?$/.exec(text);
+
+ function parseCellRef(ref) {
+  const m = /^([A-Za-z]+)([1-9]\d*)$/.exec(String(ref ?? '').trim());
   if (!m) return null;
-  const year = Number(m[1]), month = Number(m[3] || 1), day = Number(m[4] || 1);
-  // UTC를 쓰되 0~99년도도 그대로 계산한다.
-  const last = new Date(0);
-  last.setUTCFullYear(year, month, 0);
-  const lastDay = last.getUTCDate();
-  if (month < 1 || month > 12 || day < 1 || day > lastDay) return null;
-  const key = (mo, d) => `${m[1]}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-  return { start: key(month, day), end: key(m[3] ? month : 12, m[4] ? day : m[3] ? lastDay : 31) };
+  const col = colToIndex(m[1]);
+  const row = Number(m[2]) - 1;
+  if (col < 0 || row < 0) return null;
+  return { col, row, key: m[1].toUpperCase() + m[2] };
  }
- function isValidDateRange(text) {
-  const value = String(text ?? '').trim();
-  if (!value) return true;
-  const parts = value.split(/\s*[~～〜]\s*/);
-  if (parts.length > 2) return false;
-  const first = historyDatePart(parts[0]);
-  if (!first) return false;
-  if (parts.length === 1 || parts[1] === '현재') return true;
-  const last = historyDatePart(parts[1]);
-  return !!last && first.start <= last.end;
+
+ function formatCellRef(col, row) {
+  return indexToCol(col) + (row + 1);
  }
- // 표시용 정렬. 기간은 시작일 기준, 빈 날짜는 항상 맨 뒤. 저장된 문자열은 그대로 둔다.
- function sortByDate(rows, dir = 'desc') {
-  const sign = dir === 'asc' ? 1 : -1;
-  const key = row => {
-   const value = String(row.date ?? '').trim();
-   return historyDatePart(value.split(/[~～〜]/)[0].trim())?.start || value;
-  };
-  return [...rows].sort((a, b) => {
-   const left = key(a), right = key(b);
-   if (!left || !right) return !left - !right;
-   return left < right ? -sign : left > right ? sign : 0;
+
+ function expandRange(startRef, endRef) {
+  const a = parseCellRef(startRef);
+  const b = parseCellRef(endRef);
+  if (!a || !b) return null;
+  const minCol = Math.min(a.col, b.col), maxCol = Math.max(a.col, b.col);
+  const minRow = Math.min(a.row, b.row), maxRow = Math.max(a.row, b.row);
+  if ((maxCol - minCol + 1) * (maxRow - minRow + 1) > 10000) return null;
+  const keys = [];
+  for (let r = minRow; r <= maxRow; r++) {
+   for (let c = minCol; c <= maxCol; c++) {
+    keys.push(formatCellRef(c, r));
+   }
+  }
+  return keys;
+ }
+
+ function parseNumericLiteral(text) {
+  const s = String(text ?? '').trim();
+  if (!s) return null;
+  if (!/^[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?$/.test(s)) return null;
+  const n = Number(s.replace(/,/g, ''));
+  return Number.isFinite(n) ? n : null;
+ }
+
+ function formatNumber(n) {
+  if (!Number.isFinite(n)) return '#ERROR!';
+  const cleaned = Math.abs(n) < 1e-12 ? 0 : Math.round(n * 1e10) / 1e10;
+  return cleaned.toLocaleString('en-US', { maximumFractionDigits: 6 });
+ }
+
+ class FormulaError extends Error {
+  constructor(code) {
+   super(code);
+   this.code = code;
+  }
+ }
+
+ function tokenize(expr) {
+  const tokens = [];
+  let i = 0;
+  while (i < expr.length) {
+   const ch = expr[i];
+   if (/\s/.test(ch)) { i++; continue; }
+   if ('+-*/():,'.includes(ch)) {
+    tokens.push({ type: ch, value: ch });
+    i++;
+    continue;
+   }
+   if (/\d/.test(ch) || (ch === '.' && /\d/.test(expr[i + 1] ?? ''))) {
+    let j = i;
+    while (j < expr.length && /[\d.]/.test(expr[j])) j++;
+    const numStr = expr.slice(i, j);
+    if ((numStr.match(/\./g) || []).length > 1) throw new FormulaError('#ERROR!');
+    tokens.push({ type: 'NUM', value: Number(numStr) });
+    i = j;
+    continue;
+   }
+   if (/[A-Za-z]/.test(ch)) {
+    let j = i;
+    while (j < expr.length && /[A-Za-z0-9]/.test(expr[j])) j++;
+    const word = expr.slice(i, j);
+    if (expr[j] === '(') {
+     tokens.push({ type: 'FUNC', value: word.toUpperCase() });
+    } else if (/^[A-Za-z]+[1-9]\d*$/.test(word)) {
+     tokens.push({ type: 'REF', value: word.toUpperCase() });
+    } else {
+     throw new FormulaError('#NAME?');
+    }
+    i = j;
+    continue;
+   }
+   throw new FormulaError('#ERROR!');
+  }
+  return tokens;
+ }
+
+ function evaluateCell(key, cells, visiting = new Set()) {
+  const raw = cells?.[key];
+  if (raw === undefined || raw === null || raw === '') {
+   return { display: '', numeric: 0, isNumber: false, isEmpty: true, error: null };
+  }
+  const str = String(raw);
+  if (!str.startsWith('=')) {
+   const num = parseNumericLiteral(str);
+   if (num !== null) {
+    return { display: formatNumber(num), numeric: num, isNumber: true, isEmpty: false, error: null };
+   }
+   return { display: str, numeric: null, isNumber: false, isEmpty: false, error: null };
+  }
+
+  if (visiting.has(key)) {
+   return { display: '#CIRC!', numeric: null, isNumber: false, isEmpty: false, error: '#CIRC!' };
+  }
+
+  visiting.add(key);
+  try {
+   const expr = str.slice(1).trim();
+   if (!expr) throw new FormulaError('#ERROR!');
+   const tokens = tokenize(expr);
+   let pos = 0;
+   const peek = () => tokens[pos] ?? null;
+   const consume = type => {
+    const t = tokens[pos];
+    if (!t || (type && t.type !== type)) throw new FormulaError('#ERROR!');
+    pos++;
+    return t;
+   };
+
+   const resolveRefNumber = refKey => {
+    const res = evaluateCell(refKey, cells, visiting);
+    if (res.error) throw new FormulaError(res.error);
+    if (res.isEmpty) return 0;
+    if (!res.isNumber) throw new FormulaError('#VALUE!');
+    return res.numeric;
+   };
+
+   const parseExpr = () => {
+    let left = parseTerm();
+    while (peek()?.type === '+' || peek()?.type === '-') {
+     const op = consume().type;
+     const right = parseTerm();
+     left = op === '+' ? left + right : left - right;
+    }
+    return left;
+   };
+
+   const parseTerm = () => {
+    let left = parseFactor();
+    while (peek()?.type === '*' || peek()?.type === '/') {
+     const op = consume().type;
+     const right = parseFactor();
+     if (op === '/') {
+      if (right === 0) throw new FormulaError('#DIV/0!');
+      left = left / right;
+     } else {
+      left = left * right;
+     }
+    }
+    return left;
+   };
+
+   const parseFuncArgs = () => {
+    const values = [];
+    if (peek()?.type === ')') return values;
+    while (true) {
+     if (peek()?.type === 'REF' && tokens[pos + 1]?.type === ':' && tokens[pos + 2]?.type === 'REF') {
+      const start = consume('REF').value;
+      consume(':');
+      const end = consume('REF').value;
+      const keys = expandRange(start, end);
+      if (!keys) throw new FormulaError('#REF!');
+      for (const k of keys) {
+       const res = evaluateCell(k, cells, visiting);
+       if (res.error) throw new FormulaError(res.error);
+       if (res.isNumber) values.push(res.numeric);
+       else if (!res.isEmpty) throw new FormulaError('#VALUE!');
+      }
+     } else {
+      values.push(parseExpr());
+     }
+     if (peek()?.type === ',') { consume(','); continue; }
+     break;
+    }
+    return values;
+   };
+
+   const parseFactor = () => {
+    const t = peek();
+    if (!t) throw new FormulaError('#ERROR!');
+    if (t.type === '+') { consume(); return parseFactor(); }
+    if (t.type === '-') { consume(); return -parseFactor(); }
+    if (t.type === 'NUM') { consume(); return t.value; }
+    if (t.type === 'REF') { consume(); return resolveRefNumber(t.value); }
+    if (t.type === 'FUNC') {
+     const name = consume('FUNC').value;
+     consume('(');
+     const args = parseFuncArgs();
+     consume(')');
+     if (name === 'SUM') return args.reduce((acc, v) => acc + v, 0);
+     if (name === 'AVG' || name === 'AVERAGE') {
+      if (args.length === 0) throw new FormulaError('#DIV/0!');
+      return args.reduce((acc, v) => acc + v, 0) / args.length;
+     }
+     throw new FormulaError('#NAME?');
+    }
+    if (t.type === '(') {
+     consume('(');
+     const val = parseExpr();
+     consume(')');
+     return val;
+    }
+    throw new FormulaError('#ERROR!');
+   };
+
+   const result = parseExpr();
+   if (pos !== tokens.length || !Number.isFinite(result)) throw new FormulaError('#ERROR!');
+   return { display: formatNumber(result), numeric: result, isNumber: true, isEmpty: false, error: null };
+  } catch (err) {
+   const code = err instanceof FormulaError ? err.code : '#ERROR!';
+   return { display: code, numeric: null, isNumber: false, isEmpty: false, error: code };
+  } finally {
+   visiting.delete(key);
+  }
+ }
+
+ function rewriteFormula(formula, transformRef) {
+  if (typeof formula !== 'string' || !formula.startsWith('=')) return formula;
+  return '=' + formula.slice(1).replace(/\b([A-Za-z]+)([1-9]\d*)\b(?!\s*\()/g, (match, colStr, rowStr) => {
+   const parsed = parseCellRef(match);
+   if (!parsed) return match;
+   const next = transformRef(parsed.col, parsed.row);
+   if (!next) return '#REF!';
+   return formatCellRef(next.col, next.row);
   });
  }
- // 공백으로 나눈 단어를 분류·사이트·링크·비고에서 찾는다. ID/PW는 제외한다.
- const SEARCH_FIELDS = ['category', 'site', 'loginId', 'link', 'note1', 'note2', 'note3', 'note4'];
- function matchesSearch(row, query) {
-  const terms = String(query ?? '').trim().toLowerCase().split(/\s+/).filter(Boolean);
-  return terms.every(term => SEARCH_FIELDS.some(field => String(row[field] ?? '').toLowerCase().includes(term)));
- }
- function migratePasswordLinks(input) {
-  const row = { ...input };
-  const links = String(row.link ?? '').split('\n').map(value => value.trim()).filter(Boolean);
-  // Explicit web URLs plus common bare domains. Do not extract email addresses.
-  const urls = /https?:\/\/[^\s<>"']+|(?<![\w@./:-])(?:www\.[a-z0-9-]+(?:\.[a-z0-9-]+)+|(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+(?:com|net|org|edu|gov|kr|io|dev|app|co|me|ai|info|biz|tv|xyz|shop|store|online))(?![a-z0-9.-])(?:[/?#][^\s<>"']*)?/gi;
-  for (const field of ['site', 'note1', 'note2', 'note3', 'note4']) {
-   if (typeof row[field] !== 'string') continue;
-   let moved = false;
-   const remaining = row[field].replace(urls, match => {
-    let url = match.replace(/[.,;:!?]+$/, '');
-    for (const [open, close] of [['(', ')'], ['[', ']'], ['{', '}']]) {
-     while (url.endsWith(close) && url.split(close).length > url.split(open).length) url = url.slice(0, -1);
-    }
-    if (!links.includes(url)) links.push(url);
-    moved = true;
-    return match.slice(url.length);
-   });
-   if (moved) row[field] = remaining.replace(/^[\s/|,;:.·()[\]{}]+|[\s/|,;:.·()[\]{}]+$/g, '').replace(/[ \t]{2,}/g, ' ');
+
+ function insertRow(cells, atRow) {
+  const next = {};
+  for (const [key, val] of Object.entries(cells || {})) {
+   const ref = parseCellRef(key);
+   if (!ref) continue;
+   const targetRow = ref.row >= atRow ? ref.row + 1 : ref.row;
+   next[formatCellRef(ref.col, targetRow)] = rewriteFormula(val, (c, r) => ({ col: c, row: r >= atRow ? r + 1 : r }));
   }
-  row.link = links.join('\n');
-  return row;
+  return next;
  }
- return { dday, formatMoney, parseMoney, isValidDate, isValidDateRange, sortByDate, matchesSearch, migratePasswordLinks };
-})();
+
+ function deleteRow(cells, atRow) {
+  const next = {};
+  for (const [key, val] of Object.entries(cells || {})) {
+   const ref = parseCellRef(key);
+   if (!ref || ref.row === atRow) continue;
+   const targetRow = ref.row > atRow ? ref.row - 1 : ref.row;
+   next[formatCellRef(ref.col, targetRow)] = rewriteFormula(val, (c, r) => {
+    if (r === atRow) return null;
+    return { col: c, row: r > atRow ? r - 1 : r };
+   });
+  }
+  return next;
+ }
+
+ function insertCol(cells, atCol) {
+  const next = {};
+  for (const [key, val] of Object.entries(cells || {})) {
+   const ref = parseCellRef(key);
+   if (!ref) continue;
+   const targetCol = ref.col >= atCol ? ref.col + 1 : ref.col;
+   next[formatCellRef(targetCol, ref.row)] = rewriteFormula(val, (c, r) => ({ col: c >= atCol ? c + 1 : c, row: r }));
+  }
+  return next;
+ }
+
+ function deleteCol(cells, atCol) {
+  const next = {};
+  for (const [key, val] of Object.entries(cells || {})) {
+   const ref = parseCellRef(key);
+   if (!ref || ref.col === atCol) continue;
+   const targetCol = ref.col > atCol ? ref.col - 1 : ref.col;
+   next[formatCellRef(targetCol, ref.row)] = rewriteFormula(val, (c, r) => {
+    if (c === atCol) return null;
+    return { col: c > atCol ? c - 1 : c, row: r };
+   });
+  }
+  return next;
+ }
+
+ root.VaultPure = {
+  indexToCol,
+  colToIndex,
+  parseCellRef,
+  formatCellRef,
+  expandRange,
+  parseNumericLiteral,
+  formatNumber,
+  evaluateCell,
+  insertRow,
+  deleteRow,
+  insertCol,
+  deleteCol,
+ };
+})(typeof window !== 'undefined' ? window : globalThis);

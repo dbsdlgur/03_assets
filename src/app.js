@@ -1,565 +1,54 @@
-
 (() => {
- const TAB_KEY = 'vault.tab', VIEW_KEY = 'vault.view', FAMILY_TAB_KEY = 'vault.familyTab';
- const { dday, formatMoney, parseMoney, isValidDate, isValidDateRange, sortByDate, matchesSearch, migratePasswordLinks } = window.VaultPure;
- const PASSWORD_COLUMNS = [
-  { field: 'category', label: '분류' }, { field: 'site', label: '사이트' },
-  { field: 'link', label: '링크', type: 'links' }, { field: 'loginId', label: 'ID' },
-  { field: 'password', label: 'PW', type: 'copy' },
-  { field: 'note1', label: '비고1' }, { field: 'note2', label: '비고2' }, { field: 'note3', label: '비고3' },
-  { field: 'note4', label: '비고4' },
- ];
- // 표 정의(S-4~S-6). path는 상태 JSON(S-7) 안의 위치다. computed 열은 저장하지 않는다.
- const TABLES = {
-  diary: { title: '일기', path: ['diary'], sortable: true, summaryField: 'title', columns: [
-   { field: 'date', label: '날짜', type: 'date' }, { field: 'title', label: '제목' },
-   { field: 'name', label: '이름' }, { field: 'note1', label: '비고' }, { field: 'content', label: '내용' },
-  ] },
-  history: { title: '이력', path: ['history'], sortable: true, summaryField: 'name', columns: [
-   { field: 'date', label: '날짜', type: 'date', allowRange: true }, { field: 'name', label: '제목' }, { field: 'content', label: '내용' }, { field: 'note1', label: '비고1' },
-   { field: 'note2', label: '비고2' }, { field: 'note3', label: '비고3' }, { field: 'note4', label: '비고4' },
-  ] },
-  passwordsSelf: { title: '본인', path: ['passwords', 'self'], view: 'self', searchable: true, columns: PASSWORD_COLUMNS },
-  passwordsOther: { title: '기타', path: ['passwords', 'other'], view: 'other', searchable: true, columns: PASSWORD_COLUMNS },
-  passwordsFamily: { title: '가족', path: ['passwords', 'family'], view: 'family', searchable: true, columns: [{ field: 'owner', label: '누구' }, ...PASSWORD_COLUMNS] },
- };
- const sortDir = { history: 'asc', diary: 'desc' };
- const openEntries = new Set();
- let personalTab = 'passwords';
- let familyTab = 'passwords';
- let search = '', diarySearch = '', historySearch = '', pwView = 'self';
- const categoryFilters = { passwordsSelf: '', passwordsFamily: '', passwordsOther: '' };
- const categoryOf = row => String(row.category ?? '').trim();
- // The category dot color depends only on the trimmed name, never on row order or the active filter.
- // Dots come from the Notion sticker palette (decoration only; never on buttons or surfaces).
- const STICKERS = ['sky', 'purple', 'pink', 'orange', 'teal', 'green', 'brown'];
- function categoryDot(category) {
-  if (!category) return '';
-  let hash = 2166136261;
-  for (const char of category) hash = Math.imul(hash ^ char.codePointAt(0), 16777619) >>> 0;
-  return `var(--sticker-${STICKERS[hash % STICKERS.length]})`;
- }
- function matchesFields(row, query, fields) {
-  const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
-  return terms.every(term => fields.some(field => String(row[field] ?? '').toLocaleLowerCase().includes(term)));
- }
- // 날짜를 고치면 다시 정렬하되, 같은 표 안에서 다음 칸으로 옮겨 입력하는 중에는 미룬다.
- // 표를 다시 그리면 입력 중인 칸이 사라지기 때문이다. 포커스가 표를 벗어날 때 정렬한다.
- const pendingSort = new Set();
+ const {
+  indexToCol,
+  formatCellRef,
+  evaluateCell,
+  deleteRow,
+  deleteCol,
+ } = window.VaultPure;
 
- let state = normalize({ schema: 1 });
  const $ = sel => document.querySelector(sel);
- const changed = () => parent.vaultHost?.changed();
- const sizesUI = window.VaultSizes.mount($('#panel-sizes'), () => state.sizes, changed);
  const newId = () => crypto.randomUUID?.() ?? Date.now().toString(36) + Math.random().toString(36).slice(2);
  const el = (tag, props = {}) => Object.assign(document.createElement(tag), props);
- const button = (textContent, onclick, props = {}) => el('button', { type: 'button', textContent, onclick, ...props });
+ const changed = () => parent.vaultHost?.changed();
 
- // 빠진 목록만 채운다. 모르는 필드는 그대로 둔다(S-7.2).
+ function defaultSheet(name = 'Money') {
+  return { id: newId(), name, rows: 30, cols: 12, cells: {} };
+ }
+
+ // 기존 금고의 다른 필드(비밀번호·이력 등)는 손대지 않고 그대로 보존한다.
  function normalize(input) {
-  const s = structuredClone(input);
-  s.profile = { ...s.profile };
-  for (const key of ['expenses', 'identity', 'family']) s.profile[key] = Array.isArray(s.profile[key]) ? s.profile[key] : [];
-  s.history = Array.isArray(s.history) ? s.history.map(row => {
-   // 거주지는 비고3으로 옮긴다(이미 비고3이 있으면 아래 줄에 붙인다).
-   if (!row || typeof row !== 'object' || !('residence' in row)) return row;
-   const { residence, ...rest } = row;
-   const moved = String(residence ?? '').trim();
-   if (moved) rest.note3 = rest.note3 ? `${rest.note3}\n${moved}` : moved;
-   return rest;
-  }) : [];
-  s.diary = Array.isArray(s.diary) ? s.diary : [];
-  s.passwords = { ...s.passwords };
-  for (const key of ['self', 'family', 'other']) s.passwords[key] = Array.isArray(s.passwords[key]) ? s.passwords[key].map(migratePasswordLinks) : [];
-  s.sizes = window.VaultSizes.normalize(s.sizes);
+  const s = structuredClone(input && typeof input === 'object' ? input : { schema: 1 });
+  const rawMoney = s.money && typeof s.money === 'object' ? s.money : {};
+  const sheets = Array.isArray(rawMoney.sheets) && rawMoney.sheets.length
+   ? rawMoney.sheets.map((sh, i) => ({
+      id: typeof sh?.id === 'string' && sh.id ? sh.id : newId(),
+      name: typeof sh?.name === 'string' && sh.name.trim() ? sh.name.trim() : `Sheet ${i + 1}`,
+      rows: Number.isInteger(sh?.rows) && sh.rows >= 1 ? sh.rows : 30,
+      cols: Number.isInteger(sh?.cols) && sh.cols >= 1 ? sh.cols : 12,
+      cells: sh?.cells && typeof sh.cells === 'object' ? { ...sh.cells } : {},
+     }))
+   : [defaultSheet('Money')];
+  const activeSheetId = sheets.some(sh => sh.id === rawMoney.activeSheetId) ? rawMoney.activeSheetId : sheets[0].id;
+  s.money = { activeSheetId, sheets };
   return s;
  }
 
- const rowsOf = def => def.path.reduce((node, key) => node[key], state);
- const INITIAL = { money: 0, toggle: false };
+ let state = normalize({ schema: 1 });
+ let selected = { col: 0, row: 0 };
+ let editing = false;
+ let committing = false;
 
- function emptyRow(def) {
-  const row = { id: newId() };
-  for (const col of def.columns) if (col.type !== 'computed') row[col.field] = col.initial ?? INITIAL[col.type] ?? '';
-  return row;
- }
+ const sheetWrap = $('#sheetWrap');
+ const cellRefEl = $('#cellRef');
+ const formulaInput = $('#formulaInput');
+ const sheetTabsEl = $('#sheetTabs');
 
- function textInput(col, value, props = {}) {
-  const input = el('input', { type: 'text', autocomplete: 'off', value: value ?? '', ...props });
-  input.setAttribute('aria-label', col.label);
-  return input;
- }
+ const activeSheet = () => state.money.sheets.find(s => s.id === state.money.activeSheetId) || state.money.sheets[0];
 
- // 민감 값(S-4.3): 기본 가림, 보기·복사. 탭을 바꾸면 mask()로 다시 가린다.
- function secretCell(col, row, onInput) {
-  const box = el('div', { className: 'secret' });
-  const input = textInput(col, row[col.field]);
-  const [copy, copied] = copyButton(() => row[col.field]);
-  let revealed = false;
-  const reveal = button('보기', () => { revealed = !revealed; box.update(); });
-  input.addEventListener('input', () => { row[col.field] = input.value; onInput(); });
-  box.update = () => {
-   const secret = col.secretWhen ? !!col.secretWhen(row) : true;
-   input.type = secret && !revealed ? 'password' : 'text';
-   reveal.textContent = revealed ? '숨기기' : '보기';
-   reveal.hidden = copy.hidden = !secret;
-  };
-  box.mask = () => { revealed = false; box.update(); };
-  box.update();
-  box.append(input, reveal, copy, copied);
-  return box;
- }
-
- // 복사 버튼과 결과 표시. 값은 누를 때 읽는다.
- function copyButton(value) {
-  const copied = el('span', { className: 'copied', role: 'status' });
-  const copy = button('복사', async () => {
-   try { await navigator.clipboard.writeText(value() ?? ''); copied.textContent = '복사됨'; }
-   catch { copied.textContent = '복사 실패'; }
-   setTimeout(() => { copied.textContent = ''; }, 2000);
-  });
-  return [copy, copied];
- }
-
- // 항상 보이는 값 + 복사(PW·링크). 가림 대상이 아니라 .secret과 따로 둔다.
- function copyCell(input, row, col) {
-  const box = el('div', { className: 'copyable' });
-  box.append(input, ...copyButton(() => row[col.field]));
-  return box;
- }
-
- function fillCell(td, col, row, ctx) {
-  td.dataset.label = col.label;
-  td.dataset.field = col.field;
-  const edited = (value, after = ctx.refresh) => { row[col.field] = value; changed(); after(); };
-  switch (col.type) {
-   case 'links': {
-    const input = el('textarea', { value: row[col.field] ?? '', rows: Math.max(1, Math.min(3, (row[col.field] || '').split('\n').length)), autocomplete: 'off', spellcheck: false });
-    input.setAttribute('aria-label', col.label);
-    input.addEventListener('input', () => edited(input.value));
-    td.append(copyCell(input, row, col));
-    return;
-   }
-   case 'copy': {
-    const input = textInput(col, row[col.field]);
-    input.addEventListener('input', () => edited(input.value));
-    td.append(copyCell(input, row, col));
-    return;
-   }
-   case 'computed': {
-    const update = () => { td.textContent = col.compute(row) || '–'; };
-    ctx.updaters.push(update);
-    update();
-    return;
-   }
-   case 'select': {
-    const select = el('select');
-    for (const [value, text] of col.options) select.append(new Option(text, value));
-    select.value = row[col.field] ?? col.initial;
-    select.setAttribute('aria-label', col.label);
-    select.addEventListener('change', () => edited(select.value));
-    td.append(select);
-    return;
-   }
-   case 'money': {
-    const input = textInput(col, formatMoney(row[col.field]), { inputMode: 'numeric', className: 'money' });
-    input.addEventListener('input', () => edited(parseMoney(input.value)));
-    input.addEventListener('blur', () => { input.value = formatMoney(row[col.field]); });
-    td.append(input);
-    return;
-   }
-   case 'day': {
-    const input = textInput(col, row[col.field], { inputMode: 'numeric' });
-    input.addEventListener('input', () => edited(input.value.trim() === '' ? '' : parseMoney(input.value) || ''));
-    td.append(input);
-    return;
-   }
-   case 'date': {
-    const input = textInput(col, row[col.field], { placeholder: col.allowRange ? '2006.03~2009.02' : 'YYYY-MM-DD' });
-    const validate = col.allowRange ? isValidDateRange : isValidDate;
-    const check = () => input.setAttribute('aria-invalid', String(!validate(input.value)));
-    input.addEventListener('input', () => { check(); edited(input.value); });
-    input.addEventListener('change', ctx.resort);
-    check();
-    td.append(input);
-    if (col.allowRange) td.append(el('span', { className: 'field-hint', textContent: '예: 2006.03~2009.02 · 2024~현재 (시작일 순 정렬)' }));
-    return;
-   }
-   case 'secret': {
-    const box = secretCell(col, row, () => { changed(); ctx.refresh(); });
-    ctx.updaters.push(box.update);
-    td.append(box);
-    return;
-   }
-   case 'toggle': {
-    const toggle = button(col.label, () => {
-     edited(!row[col.field]);
-     toggle.setAttribute('aria-pressed', String(!!row[col.field]));
-    }, { className: 'toggle' });
-    toggle.setAttribute('aria-pressed', String(!!row[col.field]));
-    td.append(toggle);
-    return;
-   }
-   default: {
-    const input = textInput(col, row[col.field], { type: col.type === 'password' ? 'password' : 'text' });
-    input.addEventListener('input', () => edited(input.value));
-    if (col.field === 'category') input.addEventListener('change', () => ctx.categoryChanged?.());
-    td.append(input);
-   }
-  }
- }
-
- function rowActions(name, rows, row, tag = 'td') {
-  const td = el(tag, { className: 'row-actions' });
-  const ask = () => {
-   const no = button('취소', idle);
-   td.replaceChildren(button('삭제 확인', () => { rows.splice(rows.indexOf(row), 1); openEntries.delete(row); changed(); renderTable(name); }, { className: 'danger' }), no);
-   no.focus();
-  };
-  function idle() { td.replaceChildren(button('삭제', ask)); }
-  idle();
-  return td;
- }
-
- function addRow(name) {
-  const def = TABLES[name], row = emptyRow(def);
-  if (def.searchable && categoryFilters[name]) row.category = JSON.parse(categoryFilters[name]);
-  window.VaultModal.open({
-   title: def.title + (def.searchable ? ' 비밀번호 추가' : ' 추가'),
-   initialFocus: def.searchable ? (row.category ? 'site' : 'category') : 'date',
-   fields: def.columns.map(col => ({
-    key: col.field, label: col.label, value: row[col.field],
-    multiline: col.type === 'links' || col.field.startsWith('note') || col.field === 'content',
-    wide: col.type === 'links' || col.field === 'content',
-    rows: col.field === 'content' ? (name === 'diary' ? 6 : 3) : 2,
-    placeholder: col.type === 'date' ? (col.allowRange ? '2006.03~2009.02' : 'YYYY-MM-DD') : '',
-    validate: col.type === 'date' ? (col.allowRange ? isValidDateRange : isValidDate) : null,
-    validationMessage: col.allowRange ? '날짜 또는 기간을 확인하세요. 예: 2006.03~2009.02' : '날짜를 확인하세요. 예: 2026-11-09',
-   })),
-   onAdd(values) {
-    Object.assign(row, values);
-    rowsOf(def).push(row);
-    changed();
-    renderTable(name);
-    const matches = def.searchable
-     ? matchesSearch(row, search) && (!categoryFilters[name] || categoryOf(row) === JSON.parse(categoryFilters[name]))
-     : name === 'diary' ? matchesFields(row, diarySearch, ['title', 'name', 'note1', 'content'])
-      : matchesFields(row, historySearch, def.columns.map(col => col.field));
-    const status = $('#' + (def.searchable ? 'password' : name) + 'AddStatus');
-    status.textContent = matches ? '추가했습니다. 상단 저장 버튼으로 저장하세요.' : '추가했습니다. 현재 필터에 맞지 않아 목록에는 표시되지 않습니다. 상단 저장 버튼으로 저장하세요.';
-    status.hidden = false;
-   },
-   focusAfterClose: () => [...document.querySelectorAll(`[data-table="${name}"] .section-head button`)].find(control => control.textContent === '+ 추가'),
-  });
- }
-
- function updateCategoryFilter(name, select) {
-  const categories = [...new Set(rowsOf(TABLES[name]).map(categoryOf))];
-  // Keep the selected category available while its last row is edited or deleted.
-  const selected = categoryFilters[name];
-  if (selected && !categories.includes(JSON.parse(selected))) categories.push(JSON.parse(selected));
-  categories.sort((a, b) => a.localeCompare(b, 'ko'));
-  select.replaceChildren(new Option('분류', ''), ...categories.map(value => new Option(value || '미분류', JSON.stringify(value))));
-  select.value = selected;
- }
-
- // Each editor updates only its own summary, including during Korean IME input.
- function entryContext(parent) {
-  const ctx = {
-   updaters: [],
-   refresh() { for (const update of ctx.updaters) update(); },
-   resort: parent.resort,
-   categoryChanged: parent.categoryChanged,
-  };
-  return ctx;
- }
-
- // Closed entries keep only their summary in the DOM; build fields on first expansion.
- function lazyEditor(item, build) {
-  let built = false;
-  const ensure = () => {
-   if (!item.open || built) return;
-   built = true;
-   build();
-  };
-  item.addEventListener('toggle', ensure);
-  ensure();
- }
-
- // A compact date/content overview; all existing fields remain editable on expansion.
- function renderEntries(name, visible, rows, parentCtx) {
-  const def = TABLES[name], summaryField = def.summaryField || 'content';
-  const list = el('div', { className: 'history-list' });
-  list.dataset.kind = name;
-  const heads = el('div', { className: 'history-headings' });
-  heads.setAttribute('aria-hidden', 'true');
-  for (const text of name === 'diary' ? ['날짜', '제목', '이름', '비고'] : ['날짜', '제목', '내용']) heads.append(el('span', { textContent: text }));
-  heads.append(el('span'));
-  list.append(heads);
-  for (const row of visible) {
-   const ctx = entryContext(parentCtx);
-   const item = el('details', { className: 'history-item', open: openEntries.has(row) });
-   item.entryRow = row;
-   item.addEventListener('toggle', () => {
-    if (item.isConnected) item.open ? openEntries.add(row) : openEntries.delete(row);
-   });
-   const summary = el('summary', { className: 'history-summary' });
-   const date = el('span', { className: 'history-date' });
-   const dateValue = el('span');
-   date.append(dateValue);
-   const content = el('span', { className: 'history-content' });
-   const person = el('span', { className: 'history-name' });
-   const marker = el('span', { className: 'history-marker' });
-   marker.setAttribute('aria-hidden', 'true');
-   const note = el('span', { className: 'history-note' });
-   if (name === 'diary') summary.append(date, content, person, note, marker);
-   else summary.append(date, content, person, marker);
-   const update = () => {
-    const dateText = String(row.date || '날짜 미입력');
-    const split = dateText.search(/[~～〜]/);
-    if (split < 0) dateValue.textContent = dateText;
-    else dateValue.replaceChildren(dateText.slice(0, split + 1), el('wbr'), dateText.slice(split + 1));
-    content.textContent = row[summaryField] || (summaryField === 'content' ? '내용 미입력' : '제목 미입력');
-    content.title = row[summaryField] || '';
-    if (name === 'history') { person.textContent = row.content || ''; person.title = row.content || ''; }
-    else {
-     person.textContent = row.name || '—';
-     person.title = row.name || '이름 미입력';
-     note.textContent = row.note1 || '';
-     note.title = row.note1 || '';
-     // 휴대폰에서는 note 칸을 숨기고 이름 뒤에 붙여 보여 준다.
-     if (row.note1) person.dataset.note = row.note1; else delete person.dataset.note;
-    }
-   };
-   ctx.updaters.push(update);
-   const fields = el('div', { className: 'history-fields' });
-   lazyEditor(item, () => {
-    for (const col of def.columns) {
-     const field = el('label', { className: 'history-field' });
-     field.dataset.field = col.field;
-     field.append(el('span', { className: 'history-label', textContent: col.label }));
-     if (col.field === 'date' || col.field === 'name' || (name === 'diary' && col.field !== 'content')) fillCell(field, col, row, ctx);
-     else {
-      const input = el('textarea', { value: row[col.field] ?? '', rows: col.field === 'content' ? 3 : 2 });
-      input.setAttribute('aria-label', col.label);
-      input.addEventListener('input', () => { row[col.field] = input.value; changed(); ctx.refresh(); });
-      field.append(input);
-     }
-     fields.append(field);
-    }
-    fields.append(rowActions(name, rows, row, 'div'));
-   });
-   update();
-   item.append(summary, fields);
-   list.append(item);
-  }
-  return list;
- }
-
- // The list is read-only; expand any summary field to edit the complete entry.
- function renderPasswordEntries(name, visible, rows, parentCtx) {
-  const def = TABLES[name];
-  const overviewFields = ['category', 'site', 'loginId', 'password'];
-  const list = el('div', { className: 'password-list' });
-  const headings = el('div', { className: 'password-headings' });
-  headings.setAttribute('aria-hidden', 'true');
-  for (const field of overviewFields) headings.append(el('span', { textContent: def.columns.find(col => col.field === field).label }));
-  list.append(headings);
-  for (const row of visible) {
-   const ctx = entryContext(parentCtx);
-   const item = el('details', { className: 'password-item', open: openEntries.has(row) });
-   item.entryRow = row;
-   item.addEventListener('toggle', () => {
-    if (item.isConnected) item.open ? openEntries.add(row) : openEntries.delete(row);
-   });
-   const overview = el('summary', { className: 'password-overview' });
-   const details = el('div', { className: 'password-details' });
-   const fieldFor = col => {
-    const field = el('div', { className: 'password-field' });
-    field.append(el('span', { className: 'password-label', textContent: col.label }));
-    if (col.field.startsWith('note')) {
-     field.dataset.field = col.field;
-     const input = el('textarea', { value: row[col.field] ?? '', rows: 2, ariaLabel: col.label });
-     input.addEventListener('input', () => { row[col.field] = input.value; changed(); ctx.refresh(); });
-     field.append(input);
-    } else fillCell(field, col, row, ctx);
-    return field;
-   };
-   for (const key of overviewFields) {
-    const col = def.columns.find(col => col.field === key);
-    const field = el('span', { className: 'password-field' });
-    field.dataset.field = key;
-    const value = el('span', { className: 'password-value' });
-    field.append(el('span', { className: 'password-label', textContent: col.label }));
-    if (key === 'password') {
-     const box = el('span', { className: 'copyable' });
-     const [copy, copied] = copyButton(() => row.password);
-     copy.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); });
-     box.append(value, copy, copied);
-     field.append(box);
-    } else field.append(value);
-    const update = () => {
-     const text = String(row[key] ?? '') || '—';
-     // Android(Samsung Internet·Chrome)는 format-detection을 무시하고 글자 속 이메일을 메일 링크로 연다.
-     // 분류 외 값은 CSS 생성 글자(::before)로 그려 문서 텍스트에서 빼서 자동 인식을 막는다.
-     if (key === 'category') value.textContent = text;
-     else { value.textContent = ''; value.dataset.text = text; }
-     value.title = String(row[key] ?? '');
-     if (key === 'category') field.style.setProperty('--category-dot', categoryDot(categoryOf(row)) || 'var(--line-2)');
-    };
-    ctx.updaters.push(update);
-    update();
-    overview.append(field);
-   }
-   const marker = el('span', { className: 'password-toggle' });
-   marker.setAttribute('aria-hidden', 'true');
-   overview.append(marker);
-   lazyEditor(item, () => {
-    for (const col of def.columns) details.append(fieldFor(col));
-    details.append(rowActions(name, rows, row, 'div'));
-   });
-   item.append(overview, details);
-   list.append(item);
-  }
-  return list;
- }
-
- function renderTable(name) {
-  const def = TABLES[name], rows = rowsOf(def);
-  const section = document.querySelector(`[data-table="${name}"]`);
-  const head = (def.searchable && section.querySelector('.section-head')) || el('div', { className: 'section-head' });
-  const replaceContent = (...content) => {
-   // Keep the search input attached while typing, including Korean IME composition.
-   if (def.searchable && section.firstElementChild === head) {
-    while (head.nextSibling) head.nextSibling.remove();
-    section.append(...content);
-   } else section.replaceChildren(head, ...content);
-  };
-  let categorySelect;
-  if (def.searchable) {
-   categorySelect = head.querySelector('.category-filter');
-   if (!categorySelect) {
-    categorySelect = el('select', { className: 'category-filter', ariaLabel: def.title + ' 분류 필터' });
-    categorySelect.addEventListener('change', () => {
-     categoryFilters[name] = categorySelect.value;
-     renderTable(name);
-     categorySelect.focus();
-    });
-    head.append(categorySelect);
-   }
-   updateCategoryFilter(name, categorySelect);
-  }
-  if (def.sortable && rows.length > 1) {
-   const asc = sortDir[name] === 'asc';
-   head.append(button(asc ? '최근 순으로' : '오래된 순으로', () => { sortDir[name] = asc ? 'desc' : 'asc'; renderTable(name); }));
-  }
-  if (!def.searchable || !head.querySelector('button')) head.append(button('+ 추가', () => addRow(name)));
-  if (def.view) updateCount(def.view, rows.length);
-  let visible = def.sortable ? sortByDate(rows, sortDir[name]) : rows;
-  if (name === 'diary') visible = visible.filter(row => matchesFields(row, diarySearch, ['title', 'name', 'note1', 'content']));
-  if (name === 'history') visible = visible.filter(row => matchesFields(row, historySearch, def.columns.map(col => col.field)));
-  if (def.searchable) {
-   visible = visible.filter(row => matchesSearch(row, search) && (!categoryFilters[name] || categoryOf(row) === JSON.parse(categoryFilters[name])));
-  }
-  if (!visible.length) {
-   const empty = el('div', { className: 'empty' });
-   if (rows.length) empty.append('검색 결과가 없습니다');
-   else empty.append('아직 항목이 없습니다 · ', button('추가', () => addRow(name)));
-   replaceContent(empty);
-   return;
-  }
-  const totals = def.footer && el('div', { className: 'totals' });
-  const ctx = {
-   updaters: [],
-   categoryChanged() { if (categorySelect) updateCategoryFilter(name, categorySelect); },
-   refresh() {
-    for (const update of ctx.updaters) update();
-    totals?.replaceChildren(...def.footer(rows).map(([label, value]) => {
-     const item = el('span', { textContent: label + ' ' });
-     item.append(el('b', { textContent: formatMoney(value) + '원' }));
-     return item;
-    }));
-   },
-   resort: () => pendingSort.add(name),
-  };
-  if (def.searchable) {
-   replaceContent(renderPasswordEntries(name, visible, rows, ctx));
-   ctx.refresh();
-   return;
-  }
-  if (name === 'history' || name === 'diary') {
-   replaceContent(renderEntries(name, visible, rows, ctx));
-   ctx.refresh();
-   return;
-  }
-  const table = el('table');
-  const headRow = table.createTHead().insertRow();
-  for (const col of def.columns) headRow.append(el('th', { textContent: col.label }));
-  headRow.append(el('th', { ariaLabel: '관리' }));
-  const body = table.createTBody();
-  for (const row of visible) {
-   const tr = body.insertRow();
-   for (const col of def.columns) fillCell(tr.insertCell(), col, row, ctx);
-   tr.append(rowActions(name, rows, row));
-  }
-  const wrap = el('div', { className: 'table-wrap' });
-  wrap.append(table);
-  replaceContent(wrap, ...(totals ? [totals] : []));
-  ctx.refresh();
- }
-
- // 비밀번호 하위 탭(S-6.1)과 검색(S-6.4)
- const searchInput = $('#pwSearch');
- const viewButtons = [...document.querySelectorAll('[data-view]')];
- function updateCount(view, n) { document.querySelector(`[data-view="${view}"] .count`).textContent = n; }
- function renderPasswords() { for (const [name, def] of Object.entries(TABLES)) if (def.searchable) renderTable(name); }
- function setSearch(value) {
-  search = value;
-  searchInput.value = value;
-  renderPasswords();
- }
- function selectView(view) {
-  pwView = view;
-  for (const b of viewButtons) b.setAttribute('aria-pressed', String(b.dataset.view === view));
-  for (const [name, def] of Object.entries(TABLES)) if (def.view) document.querySelector(`[data-table="${name}"]`).hidden = def.view !== view;
-  renderPasswords();
-  selectTab(view === 'self' ? personalTab : view === 'family' ? familyTab : 'passwords');
-  try { sessionStorage.setItem(VIEW_KEY, view); } catch {}
- }
- for (const b of viewButtons) {
-  b.addEventListener('click', () => selectView(b.dataset.view));
-  b.addEventListener('keydown', e => {
-   const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
-   if (!step) return;
-   e.preventDefault();
-   const next = viewButtons[(viewButtons.indexOf(b) + step + viewButtons.length) % viewButtons.length];
-   selectView(next.dataset.view);
-   next.focus();
-  });
- }
- searchInput.addEventListener('input', () => setSearch(searchInput.value));
- $('#diarySearch').addEventListener('input', event => { diarySearch = event.target.value; renderTable('diary'); });
- $('#historySearch').addEventListener('input', event => { historySearch = event.target.value; renderTable('history'); });
-
-
- for (const [name, def] of Object.entries(TABLES)) {
-  if (!def.sortable) continue;
-  const section = document.querySelector(`[data-table="${name}"]`);
-  section.addEventListener('focusout', () => {
-   // Deletion confirmation replaces its focused button before focusing Cancel.
-   // Wait for that focus transfer so a pending date sort cannot dismiss it.
-   setTimeout(() => {
-    if (!pendingSort.has(name) || section.contains(document.activeElement)) return;
-    pendingSort.delete(name);
-    renderTable(name);
-   }, 0);
-  });
- }
-
- function renderAll() {
-  for (const name of Object.keys(TABLES)) renderTable(name);
-  if ($('#tab-sizes').getAttribute('aria-selected') === 'true') sizesUI.render(pwView);
-  showUpdatedAt();
+ function clampSelection(sheet) {
+  selected.col = Math.max(0, Math.min(sheet.cols - 1, selected.col));
+  selected.row = Math.max(0, Math.min(sheet.rows - 1, selected.row));
  }
 
  function showUpdatedAt() {
@@ -567,94 +56,383 @@
   $('#updatedAt').textContent = at && !isNaN(at) ? '저장 ' + at.toLocaleString('ko-KR') : '';
  }
 
- // 탭(S-3.1): 마지막 탭은 sessionStorage에 기억한다.
- const tabs = [...document.querySelectorAll('[role=tab]')];
- function selectTab(name, focus = false) {
-  const allowed = pwView === 'self' ? ['passwords', 'diary', 'history', 'sizes'] : pwView === 'family' ? ['passwords', 'sizes'] : ['passwords'];
-  if (!allowed.includes(name)) name = 'passwords';
-  if (pwView === 'self') personalTab = name;
-  if (pwView === 'family') familyTab = name;
-  for (const tab of tabs) {
-   tab.hidden = !allowed.includes(tab.dataset.tab);
-   const on = tab.dataset.tab === name;
-   tab.setAttribute('aria-selected', String(on));
-   tab.tabIndex = on ? 0 : -1;
-   document.getElementById(tab.getAttribute('aria-controls')).hidden = !on;
-   if (on && focus) tab.focus();
-  }
-  if (name === 'sizes') sizesUI.render(pwView);
-  for (const box of document.querySelectorAll('.secret')) box.mask();
-  if (pwView === 'self') try { sessionStorage.setItem(TAB_KEY, name); } catch {}
-  if (pwView === 'family') try { sessionStorage.setItem(FAMILY_TAB_KEY, name); } catch {}
+ function setCellValue(sheet, key, value) {
+  const next = String(value ?? '');
+  const prev = String(sheet.cells[key] ?? '');
+  if (next === prev) return false;
+  if (next === '') delete sheet.cells[key];
+  else sheet.cells[key] = next;
+  changed();
+  return true;
  }
- for (const tab of tabs) {
-  tab.addEventListener('click', () => selectTab(tab.dataset.tab));
-  tab.addEventListener('keydown', e => {
-   const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
-   if (!step) return;
-   e.preventDefault();
-   const available = tabs.filter(item => !item.hidden);
-   const next = available[(available.indexOf(tab) + step + available.length) % available.length];
-   selectTab(next.dataset.tab, true);
-  });
- }
- let saved = null;
- try { saved = sessionStorage.getItem(TAB_KEY); } catch {}
- if (saved === 'profile') saved = 'diary';
- personalTab = tabs.some(t => t.dataset.tab === saved) ? saved : 'passwords';
- try { familyTab = sessionStorage.getItem(FAMILY_TAB_KEY) === 'sizes' ? 'sizes' : 'passwords'; } catch {}
- let savedView = null;
- try { savedView = sessionStorage.getItem(VIEW_KEY); } catch {}
- selectView(viewButtons.some(b => b.dataset.view === savedView) ? savedView : 'self');
 
- function sortPasswordCategories(passwords) {
-  for (const key of ['self', 'family', 'other']) passwords[key].sort((a, b) => {
-   const first = categoryOf(a), second = categoryOf(b);
-   const emptyCategory = Number(!first) - Number(!second);
-   if (emptyCategory) return emptyCategory;
-   return first.localeCompare(second, 'ko')
-    || String(a.site ?? '').trim().localeCompare(String(b.site ?? '').trim(), 'ko')
-    || String(a.loginId ?? '').trim().localeCompare(String(b.loginId ?? '').trim(), 'ko');
-  });
+ function updateFormulaBar() {
+  const sheet = activeSheet();
+  clampSelection(sheet);
+  const key = formatCellRef(selected.col, selected.row);
+  cellRefEl.textContent = key;
+  formulaInput.value = sheet.cells[key] ?? '';
  }
+
+ function cellElement(col, row) {
+  return sheetWrap.querySelector(`td[data-col="${col}"][data-row="${row}"]`);
+ }
+
+ function refreshDisplay() {
+  const sheet = activeSheet();
+  for (const td of sheetWrap.querySelectorAll('td[data-key]')) {
+   const key = td.dataset.key;
+   const col = Number(td.dataset.col);
+   const row = Number(td.dataset.row);
+   const isSelected = col === selected.col && row === selected.row;
+   td.classList.toggle('is-selected', isSelected);
+   if (editing && isSelected) continue;
+   const res = evaluateCell(key, sheet.cells);
+   td.textContent = res.display;
+   td.classList.toggle('is-number', res.isNumber);
+   td.classList.toggle('is-error', Boolean(res.error));
+   td.title = sheet.cells[key]?.startsWith('=') ? `${sheet.cells[key]} → ${res.display}` : '';
+  }
+  for (const th of sheetWrap.querySelectorAll('thead th[data-col]')) {
+   th.classList.toggle('is-active-header', Number(th.dataset.col) === selected.col);
+  }
+  for (const th of sheetWrap.querySelectorAll('tbody th[data-row]')) {
+   th.classList.toggle('is-active-header', Number(th.dataset.row) === selected.row);
+  }
+  updateFormulaBar();
+ }
+
+ function selectCell(col, row, scrollIntoView = true) {
+  const sheet = activeSheet();
+  selected = {
+   col: Math.max(0, Math.min(sheet.cols - 1, col)),
+   row: Math.max(0, Math.min(sheet.rows - 1, row)),
+  };
+  refreshDisplay();
+  if (scrollIntoView) {
+   cellElement(selected.col, selected.row)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+ }
+
+ function startEdit(initialText = null) {
+  if (editing) return;
+  const sheet = activeSheet();
+  clampSelection(sheet);
+  const td = cellElement(selected.col, selected.row);
+  if (!td) return;
+  const key = formatCellRef(selected.col, selected.row);
+  const original = sheet.cells[key] ?? '';
+  editing = true;
+  td.classList.add('is-editing');
+  td.textContent = '';
+
+  const input = el('input', {
+   type: 'text',
+   className: 'cell-editor',
+   autocomplete: 'off',
+   spellcheck: false,
+   value: initialText !== null ? initialText : original,
+  });
+
+  const finish = (commit, move = null) => {
+   if (committing || !editing) return;
+   committing = true;
+   editing = false;
+   td.classList.remove('is-editing');
+   if (commit) setCellValue(sheet, key, input.value);
+   input.remove();
+   refreshDisplay();
+   committing = false;
+   if (move) selectCell(selected.col + move.dc, selected.row + move.dr);
+   sheetWrap.focus({ preventScroll: true });
+  };
+
+  input.addEventListener('input', () => {
+   formulaInput.value = input.value;
+  });
+
+  input.addEventListener('keydown', e => {
+   if (e.key === 'Enter') {
+    e.preventDefault();
+    finish(true, { dc: 0, dr: e.shiftKey ? -1 : 1 });
+   } else if (e.key === 'Tab') {
+    e.preventDefault();
+    finish(true, { dc: e.shiftKey ? -1 : 1, dr: 0 });
+   } else if (e.key === 'Escape') {
+    e.preventDefault();
+    finish(false);
+   }
+  });
+
+  input.addEventListener('blur', () => {
+   finish(true);
+  });
+
+  td.append(input);
+  input.focus();
+  if (initialText === null) input.select();
+  else input.setSelectionRange(input.value.length, input.value.length);
+ }
+
+ function renderGrid() {
+  const sheet = activeSheet();
+  clampSelection(sheet);
+  editing = false;
+
+  const table = el('table', { className: 'sheet-table' });
+  const thead = el('thead');
+  const headRow = el('tr');
+  headRow.append(el('th', { className: 'corner-cell', textContent: '' }));
+  for (let c = 0; c < sheet.cols; c++) {
+   const th = el('th', { textContent: indexToCol(c) });
+   th.dataset.col = String(c);
+   th.addEventListener('click', () => {
+    selectCell(c, 0);
+    sheetWrap.focus({ preventScroll: true });
+   });
+   headRow.append(th);
+  }
+  thead.append(headRow);
+
+  const tbody = el('tbody');
+  for (let r = 0; r < sheet.rows; r++) {
+   const tr = el('tr');
+   const rowTh = el('th', { textContent: String(r + 1) });
+   rowTh.dataset.row = String(r);
+   rowTh.addEventListener('click', () => {
+    selectCell(0, r);
+    sheetWrap.focus({ preventScroll: true });
+   });
+   tr.append(rowTh);
+
+   for (let c = 0; c < sheet.cols; c++) {
+    const key = formatCellRef(c, r);
+    const td = el('td');
+    td.dataset.col = String(c);
+    td.dataset.row = String(r);
+    td.dataset.key = key;
+    td.addEventListener('click', () => {
+     if (editing) return;
+     if (selected.col === c && selected.row === r) {
+      startEdit();
+     } else {
+      selectCell(c, r, false);
+      sheetWrap.focus({ preventScroll: true });
+     }
+    });
+    td.addEventListener('dblclick', () => {
+     selectCell(c, r, false);
+     startEdit();
+    });
+    tr.append(td);
+   }
+   tbody.append(tr);
+  }
+
+  table.append(thead, tbody);
+  sheetWrap.replaceChildren(table);
+  refreshDisplay();
+ }
+
+ function renderSheetTabs() {
+  sheetTabsEl.textContent = '';
+  for (const sheet of state.money.sheets) {
+   const btn = el('button', {
+    type: 'button',
+    className: 'sheet-tab',
+    textContent: sheet.name,
+   });
+   btn.setAttribute('role', 'tab');
+   const active = sheet.id === state.money.activeSheetId;
+   btn.setAttribute('aria-selected', String(active));
+   btn.addEventListener('click', () => {
+    if (state.money.activeSheetId === sheet.id) return;
+    state.money.activeSheetId = sheet.id;
+    selected = { col: 0, row: 0 };
+    changed();
+    renderSheetTabs();
+    renderGrid();
+   });
+   sheetTabsEl.append(btn);
+  }
+  $('#delSheetBtn').disabled = state.money.sheets.length <= 1;
+ }
+
+ function renderAll() {
+  renderSheetTabs();
+  renderGrid();
+  showUpdatedAt();
+ }
+
+ // 키보드 탐색 · 직접 입력 · 삭제 · 복사
+ sheetWrap.addEventListener('keydown', e => {
+  if (editing || document.activeElement === formulaInput) return;
+  const sheet = activeSheet();
+  const key = formatCellRef(selected.col, selected.row);
+
+  if (e.key === 'ArrowUp') { e.preventDefault(); selectCell(selected.col, selected.row - 1); return; }
+  if (e.key === 'ArrowDown') { e.preventDefault(); selectCell(selected.col, selected.row + 1); return; }
+  if (e.key === 'ArrowLeft') { e.preventDefault(); selectCell(selected.col - 1, selected.row); return; }
+  if (e.key === 'ArrowRight') { e.preventDefault(); selectCell(selected.col + 1, selected.row); return; }
+  if (e.key === 'Tab') { e.preventDefault(); selectCell(selected.col + (e.shiftKey ? -1 : 1), selected.row); return; }
+  if (e.key === 'Enter' || e.key === 'F2') { e.preventDefault(); startEdit(); return; }
+  if (e.key === 'Backspace' || e.key === 'Delete') {
+   e.preventDefault();
+   if (setCellValue(sheet, key, '')) refreshDisplay();
+   return;
+  }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'c') {
+   const val = sheet.cells[key] ?? '';
+   navigator.clipboard?.writeText(val).catch(() => {});
+   return;
+  }
+  if (!e.metaKey && !e.ctrlKey && !e.altKey && e.key.length === 1) {
+   e.preventDefault();
+   startEdit(e.key);
+  }
+ });
+
+ // 엑셀·구글시트에서 복사한 탭/줄바꿈 데이터 붙여넣기
+ sheetWrap.addEventListener('paste', e => {
+  if (editing || document.activeElement === formulaInput) return;
+  const text = e.clipboardData?.getData('text/plain');
+  if (text == null) return;
+  e.preventDefault();
+  const sheet = activeSheet();
+  const rows = text.replace(/\r\n/g, '\n').replace(/\n$/, '').split('\n').map(line => line.split('\t'));
+  const needRows = selected.row + rows.length;
+  const maxCols = Math.max(...rows.map(r => r.length));
+  const needCols = selected.col + maxCols;
+  let resized = false;
+  if (needRows > sheet.rows) { sheet.rows = needRows; resized = true; }
+  if (needCols > sheet.cols) { sheet.cols = needCols; resized = true; }
+  for (let r = 0; r < rows.length; r++) {
+   for (let c = 0; c < rows[r].length; c++) {
+    setCellValue(sheet, formatCellRef(selected.col + c, selected.row + r), rows[r][c]);
+   }
+  }
+  if (resized) renderGrid();
+  else refreshDisplay();
+ });
+
+ // 수식 입력줄
+ formulaInput.addEventListener('keydown', e => {
+  const sheet = activeSheet();
+  const key = formatCellRef(selected.col, selected.row);
+  if (e.key === 'Enter') {
+   e.preventDefault();
+   setCellValue(sheet, key, formulaInput.value);
+   refreshDisplay();
+   selectCell(selected.col, selected.row + 1);
+   sheetWrap.focus({ preventScroll: true });
+  } else if (e.key === 'Escape') {
+   e.preventDefault();
+   updateFormulaBar();
+   sheetWrap.focus({ preventScroll: true });
+  }
+ });
+
+ formulaInput.addEventListener('blur', () => {
+  const sheet = activeSheet();
+  const key = formatCellRef(selected.col, selected.row);
+  if (setCellValue(sheet, key, formulaInput.value)) refreshDisplay();
+ });
+
+ // 툴바 버튼
+ $('#addRowBtn').addEventListener('click', () => {
+  const sheet = activeSheet();
+  sheet.rows += 1;
+  changed();
+  renderGrid();
+  selectCell(selected.col, sheet.rows - 1);
+ });
+
+ $('#addColBtn').addEventListener('click', () => {
+  const sheet = activeSheet();
+  sheet.cols += 1;
+  changed();
+  renderGrid();
+  selectCell(sheet.cols - 1, selected.row);
+ });
+
+ $('#delRowBtn').addEventListener('click', () => {
+  const sheet = activeSheet();
+  if (sheet.rows <= 1) return;
+  sheet.cells = deleteRow(sheet.cells, selected.row);
+  sheet.rows -= 1;
+  clampSelection(sheet);
+  changed();
+  renderGrid();
+ });
+
+ $('#delColBtn').addEventListener('click', () => {
+  const sheet = activeSheet();
+  if (sheet.cols <= 1) return;
+  sheet.cells = deleteCol(sheet.cells, selected.col);
+  sheet.cols -= 1;
+  clampSelection(sheet);
+  changed();
+  renderGrid();
+ });
+
+ $('#clearCellBtn').addEventListener('click', () => {
+  const sheet = activeSheet();
+  const key = formatCellRef(selected.col, selected.row);
+  if (setCellValue(sheet, key, '')) refreshDisplay();
+  sheetWrap.focus({ preventScroll: true });
+ });
+
+ $('#addSheetBtn').addEventListener('click', () => {
+  const nextNum = state.money.sheets.length + 1;
+  const sheet = defaultSheet(`Sheet ${nextNum}`);
+  state.money.sheets.push(sheet);
+  state.money.activeSheetId = sheet.id;
+  selected = { col: 0, row: 0 };
+  changed();
+  renderAll();
+ });
+
+ $('#renameSheetBtn').addEventListener('click', () => {
+  const sheet = activeSheet();
+  const name = prompt('시트 이름을 입력하세요.', sheet.name);
+  if (!name || !name.trim() || name.trim() === sheet.name) return;
+  sheet.name = name.trim();
+  changed();
+  renderSheetTabs();
+ });
+
+ $('#delSheetBtn').addEventListener('click', () => {
+  if (state.money.sheets.length <= 1) return;
+  const sheet = activeSheet();
+  const hasData = Object.keys(sheet.cells).length > 0;
+  if (hasData && !confirm(`"${sheet.name}" 시트를 삭제할까요?`)) return;
+  state.money.sheets = state.money.sheets.filter(s => s.id !== sheet.id);
+  state.money.activeSheetId = state.money.sheets[0].id;
+  selected = { col: 0, row: 0 };
+  changed();
+  renderAll();
+ });
 
  window.vaultApi = {
-  load(input) { openEntries.clear(); state = normalize(input); renderAll(); },
+  load(input) {
+   state = normalize(input);
+   selected = { col: 0, row: 0 };
+   renderAll();
+  },
   serialize() {
    const snapshot = structuredClone(state);
-   sortPasswordCategories(snapshot.passwords);
+   for (const sh of snapshot.money.sheets) {
+    for (const [k, v] of Object.entries(sh.cells)) {
+     if (v === '' || v == null) delete sh.cells[k];
+    }
+   }
    return snapshot;
   },
   saved(updatedAt) {
    state.updatedAt = updatedAt;
-   sortPasswordCategories(state.passwords);
-   renderPasswords();
    showUpdatedAt();
   },
  };
- renderAll();
 
- // Measure the actual rows so saved timestamps, wrapping and viewport changes cannot overlap sticky controls.
- const appHeader = $('.app-header');
- function measureStickyControls() {
-  const headerHeight = appHeader.getBoundingClientRect().height;
-  document.documentElement.style.setProperty('--sticky-header-height', headerHeight + 'px');
-  for (const input of document.querySelectorAll('.list-search')) {
-   if (!input.getClientRects().length) continue;
-   const section = input.closest('.section');
-   const searchHeight = input.getBoundingClientRect().height + parseFloat(getComputedStyle(input).marginBottom);
-   section.style.setProperty('--sticky-search-height', searchHeight + 'px');
-   const head = [...section.querySelectorAll('.section-head')].find(node => node.getClientRects().length);
-   if (head) {
-    section.style.setProperty('--sticky-head-gap', getComputedStyle(head).marginBottom);
-    const height = headerHeight + parseFloat(getComputedStyle(section).paddingTop) + searchHeight + head.getBoundingClientRect().height + parseFloat(getComputedStyle(head).marginBottom);
-    document.documentElement.style.setProperty('--sticky-stack-height', height + 'px');
-   }
-  }
- }
- const stickyObserver = new ResizeObserver(measureStickyControls);
- stickyObserver.observe(appHeader);
- for (const input of document.querySelectorAll('.list-search')) stickyObserver.observe(input);
- window.addEventListener('resize', measureStickyControls);
- measureStickyControls();
+ renderAll();
 })();
