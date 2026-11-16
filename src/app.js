@@ -38,6 +38,9 @@
  let selected = { col: 0, row: 0 };
  let editing = false;
  let committing = false;
+ let activeEditor = null;
+ let dragStart = null;
+ let refSpan = null;
 
  const sheetWrap = $('#sheetWrap');
  const cellRefEl = $('#cellRef');
@@ -114,6 +117,65 @@
   }
  }
 
+ function getFormulaEditor() {
+  if (activeEditor && activeEditor.value.startsWith('=')) return activeEditor;
+  if (document.activeElement === formulaInput && formulaInput.value.startsWith('=')) return formulaInput;
+  return null;
+ }
+
+ function clearRefHighlight() {
+  for (const td of sheetWrap.querySelectorAll('td.is-ref-highlight')) {
+   td.classList.remove('is-ref-highlight');
+  }
+ }
+
+ function highlightRefRange(a, b) {
+  clearRefHighlight();
+  const minCol = Math.min(a.col, b.col), maxCol = Math.max(a.col, b.col);
+  const minRow = Math.min(a.row, b.row), maxRow = Math.max(a.row, b.row);
+  for (let r = minRow; r <= maxRow; r++) {
+   for (let c = minCol; c <= maxCol; c++) {
+    cellElement(c, r)?.classList.add('is-ref-highlight');
+   }
+  }
+ }
+
+ function formatRefOrRange(a, b) {
+  if (a.col === b.col && a.row === b.row) return formatCellRef(a.col, a.row);
+  const minCol = Math.min(a.col, b.col), maxCol = Math.max(a.col, b.col);
+  const minRow = Math.min(a.row, b.row), maxRow = Math.max(a.row, b.row);
+  return `${formatCellRef(minCol, minRow)}:${formatCellRef(maxCol, maxRow)}`;
+ }
+
+ function applyPointedRef(input, a, b) {
+  const refText = formatRefOrRange(a, b);
+  const val = input.value;
+  let start, end;
+
+  if (refSpan && input.selectionStart === refSpan.end && input.selectionEnd === refSpan.end) {
+   start = refSpan.start;
+   end = refSpan.end;
+  } else {
+   const pos = input.selectionStart ?? val.length;
+   const selEnd = input.selectionEnd ?? pos;
+   const before = val.slice(0, pos);
+   const trailingRef = pos === selEnd && /[=+\-*/(,]\s*([A-Za-z]+[1-9]\d*(?::[A-Za-z]+[1-9]\d*)?)$/.exec(before);
+   if (trailingRef) {
+    start = pos - trailingRef[1].length;
+    end = pos;
+   } else {
+    start = pos;
+    end = selEnd;
+   }
+  }
+
+  input.value = val.slice(0, start) + refText + val.slice(end);
+  refSpan = { start, end: start + refText.length };
+  input.setSelectionRange(refSpan.end, refSpan.end);
+  if (input === activeEditor) formulaInput.value = input.value;
+  highlightRefRange(a, b);
+ }
+
  function startEdit(initialText = null) {
   if (editing) return;
   const sheet = activeSheet();
@@ -123,6 +185,7 @@
   const key = formatCellRef(selected.col, selected.row);
   const original = sheet.cells[key] ?? '';
   editing = true;
+  refSpan = null;
   td.classList.add('is-editing');
   td.textContent = '';
 
@@ -133,11 +196,17 @@
    spellcheck: false,
    value: initialText !== null ? initialText : original,
   });
+  activeEditor = input;
+  if (initialText !== null) formulaInput.value = input.value;
 
   const finish = (commit, move = null) => {
    if (committing || !editing) return;
    committing = true;
    editing = false;
+   activeEditor = null;
+   dragStart = null;
+   refSpan = null;
+   clearRefHighlight();
    td.classList.remove('is-editing');
    if (commit) setCellValue(sheet, key, input.value);
    input.remove();
@@ -148,6 +217,7 @@
   };
 
   input.addEventListener('input', () => {
+   refSpan = null;
    formulaInput.value = input.value;
   });
 
@@ -211,8 +281,16 @@
     td.dataset.col = String(c);
     td.dataset.row = String(r);
     td.dataset.key = key;
+    td.addEventListener('mousedown', e => {
+     if (e.button !== 0) return;
+     const editor = getFormulaEditor();
+     if (!editor) return;
+     e.preventDefault();
+     dragStart = { col: c, row: r };
+     applyPointedRef(editor, dragStart, dragStart);
+    });
     td.addEventListener('click', () => {
-     if (editing) return;
+     if (editing || getFormulaEditor()) return;
      if (selected.col === c && selected.row === r) {
       startEdit();
      } else {
@@ -221,6 +299,7 @@
      }
     });
     td.addEventListener('dblclick', () => {
+     if (getFormulaEditor()) return;
      selectCell(c, r, false);
      startEdit();
     });
@@ -315,24 +394,51 @@
   else refreshDisplay();
  });
 
+ // 수식 입력 중 셀·드래그 범위 선택
+ sheetWrap.addEventListener('mousemove', e => {
+  if (!dragStart) return;
+  const editor = getFormulaEditor();
+  if (!editor) { dragStart = null; return; }
+  const td = e.target.closest('td[data-col]');
+  if (!td) return;
+  applyPointedRef(editor, dragStart, { col: Number(td.dataset.col), row: Number(td.dataset.row) });
+ });
+
+ window.addEventListener('mouseup', () => {
+  dragStart = null;
+ });
+
  // 수식 입력줄
+ formulaInput.addEventListener('input', () => {
+  refSpan = null;
+ });
+
  formulaInput.addEventListener('keydown', e => {
   const sheet = activeSheet();
   const key = formatCellRef(selected.col, selected.row);
   if (e.key === 'Enter') {
    e.preventDefault();
+   refSpan = null;
+   dragStart = null;
+   clearRefHighlight();
    setCellValue(sheet, key, formulaInput.value);
    refreshDisplay();
    selectCell(selected.col, selected.row + 1);
    sheetWrap.focus({ preventScroll: true });
   } else if (e.key === 'Escape') {
    e.preventDefault();
+   refSpan = null;
+   dragStart = null;
+   clearRefHighlight();
    updateFormulaBar();
    sheetWrap.focus({ preventScroll: true });
   }
  });
 
  formulaInput.addEventListener('blur', () => {
+  refSpan = null;
+  dragStart = null;
+  clearRefHighlight();
   const sheet = activeSheet();
   const key = formatCellRef(selected.col, selected.row);
   if (setCellValue(sheet, key, formulaInput.value)) refreshDisplay();
