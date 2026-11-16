@@ -68,6 +68,8 @@
 
  let state = normalize({ schema: 1 });
  let selected = { col: 0, row: 0 };
+ let selectionEnd = { col: 0, row: 0 };
+ let selectionDragMode = null;
  let editing = false;
  let committing = false;
  let activeEditor = null;
@@ -104,6 +106,18 @@
  function clampSelection(sheet) {
   selected.col = nearestVisible(Math.max(0, Math.min(sheet.cols - 1, selected.col)), sheet.cols, sheet.hiddenCols);
   selected.row = nearestVisible(Math.max(0, Math.min(sheet.rows - 1, selected.row)), sheet.rows, sheet.hiddenRows);
+  selectionEnd.col = nearestVisible(Math.max(0, Math.min(sheet.cols - 1, selectionEnd.col)), sheet.cols, sheet.hiddenCols);
+  selectionEnd.row = nearestVisible(Math.max(0, Math.min(sheet.rows - 1, selectionEnd.row)), sheet.rows, sheet.hiddenRows);
+ }
+
+ function getSelectionBounds(sheet) {
+  clampSelection(sheet);
+  return {
+   minCol: Math.min(selected.col, selectionEnd.col),
+   maxCol: Math.max(selected.col, selectionEnd.col),
+   minRow: Math.min(selected.row, selectionEnd.row),
+   maxRow: Math.max(selected.row, selectionEnd.row),
+  };
  }
 
  function showUpdatedAt() {
@@ -123,9 +137,13 @@
 
  function updateFormulaBar() {
   const sheet = activeSheet();
-  clampSelection(sheet);
+  const bounds = getSelectionBounds(sheet);
   const key = formatCellRef(selected.col, selected.row);
-  cellRefEl.textContent = key;
+  if (bounds.minCol === bounds.maxCol && bounds.minRow === bounds.maxRow) {
+   cellRefEl.textContent = key;
+  } else {
+   cellRefEl.textContent = `${formatCellRef(bounds.minCol, bounds.minRow)}:${formatCellRef(bounds.maxCol, bounds.maxRow)}`;
+  }
   formulaInput.value = sheet.cells[key] ?? '';
  }
 
@@ -144,12 +162,16 @@
 
  function refreshDisplay() {
   const sheet = activeSheet();
+  const bounds = getSelectionBounds(sheet);
+  const isSingle = bounds.minCol === bounds.maxCol && bounds.minRow === bounds.maxRow;
   for (const td of sheetWrap.querySelectorAll('td[data-key]')) {
    const key = td.dataset.key;
    const col = Number(td.dataset.col);
    const row = Number(td.dataset.row);
    const isSelected = col === selected.col && row === selected.row;
+   const inRange = !isSingle && col >= bounds.minCol && col <= bounds.maxCol && row >= bounds.minRow && row <= bounds.maxRow;
    td.classList.toggle('is-selected', isSelected);
+   td.classList.toggle('is-in-range', inRange && !isSelected);
    for (const t of THEME_NAMES) td.classList.remove(`theme-${t}`);
    const cellTheme = sheet.themes?.[key];
    if (cellTheme) td.classList.add(`theme-${cellTheme}`);
@@ -165,24 +187,30 @@
    td.title = sheet.cells[key]?.startsWith('=') ? `${sheet.cells[key]} → ${res.display}` : '';
   }
   for (const th of sheetWrap.querySelectorAll('thead th[data-col]')) {
-   th.classList.toggle('is-active-header', Number(th.dataset.col) === selected.col);
+   const c = Number(th.dataset.col);
+   th.classList.toggle('is-active-header', c >= bounds.minCol && c <= bounds.maxCol);
   }
   for (const th of sheetWrap.querySelectorAll('tbody th[data-row]')) {
-   th.classList.toggle('is-active-header', Number(th.dataset.row) === selected.row);
+   const r = Number(th.dataset.row);
+   th.classList.toggle('is-active-header', r >= bounds.minRow && r <= bounds.maxRow);
   }
   updateFormulaBar();
   updateToolbarState(sheet);
  }
 
- function selectCell(col, row, scrollIntoView = true) {
+ function selectCell(col, row, scrollIntoView = true, extend = false) {
   const sheet = activeSheet();
-  selected = {
-   col: nearestVisible(Math.max(0, Math.min(sheet.cols - 1, col)), sheet.cols, sheet.hiddenCols),
-   row: nearestVisible(Math.max(0, Math.min(sheet.rows - 1, row)), sheet.rows, sheet.hiddenRows),
-  };
+  const targetCol = nearestVisible(Math.max(0, Math.min(sheet.cols - 1, col)), sheet.cols, sheet.hiddenCols);
+  const targetRow = nearestVisible(Math.max(0, Math.min(sheet.rows - 1, row)), sheet.rows, sheet.hiddenRows);
+  if (extend) {
+   selectionEnd = { col: targetCol, row: targetRow };
+  } else {
+   selected = { col: targetCol, row: targetRow };
+   selectionEnd = { col: targetCol, row: targetRow };
+  }
   refreshDisplay();
   if (scrollIntoView) {
-   cellElement(selected.col, selected.row)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+   cellElement(targetCol, targetRow)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
  }
 
@@ -313,16 +341,20 @@
   else input.setSelectionRange(input.value.length, input.value.length);
  }
 
- function moveSelection(dc, dr) {
+ function moveSelection(dc, dr, extend = false) {
   const sheet = activeSheet();
   const cols = visibleIndices(sheet.cols, sheet.hiddenCols);
   const rows = visibleIndices(sheet.rows, sheet.hiddenRows);
-  const ci = Math.max(0, cols.indexOf(selected.col));
-  const ri = Math.max(0, rows.indexOf(selected.row));
-  const nextCol = cols[Math.max(0, Math.min(cols.length - 1, ci + dc))] ?? selected.col;
-  const nextRow = rows[Math.max(0, Math.min(rows.length - 1, ri + dr))] ?? selected.row;
-  selectCell(nextCol, nextRow);
+  const base = extend ? selectionEnd : selected;
+  const ci = Math.max(0, cols.indexOf(base.col));
+  const ri = Math.max(0, rows.indexOf(base.row));
+  const nextCol = cols[Math.max(0, Math.min(cols.length - 1, ci + dc))] ?? base.col;
+  const nextRow = rows[Math.max(0, Math.min(rows.length - 1, ri + dr))] ?? base.row;
+  selectCell(nextCol, nextRow, true, extend);
  }
+
+ let cellClickEditReady = false;
+ let didDragSelection = false;
 
  function renderGrid() {
   const sheet = activeSheet();
@@ -337,12 +369,31 @@
 
   const thead = el('thead');
   const headRow = el('tr');
-  headRow.append(el('th', { className: 'corner-cell', textContent: '' }));
+  const corner = el('th', { className: 'corner-cell', textContent: '' });
+  corner.addEventListener('click', () => {
+   if (getFormulaEditor() || editing) return;
+   selected = { col: visCols[0] ?? 0, row: visRows[0] ?? 0 };
+   selectionEnd = { col: visCols[visCols.length - 1] ?? 0, row: visRows[visRows.length - 1] ?? 0 };
+   refreshDisplay();
+   sheetWrap.focus({ preventScroll: true });
+  });
+  headRow.append(corner);
+
   for (const c of visCols) {
    const th = el('th', { textContent: indexToCol(c) });
    th.dataset.col = String(c);
-   th.addEventListener('click', () => {
-    selectCell(c, visRows[0] ?? 0);
+   th.addEventListener('mousedown', e => {
+    if (e.button !== 0 || getFormulaEditor() || editing) return;
+    e.preventDefault();
+    if (e.shiftKey) {
+     selected.row = visRows[0] ?? 0;
+     selectionEnd = { col: c, row: visRows[visRows.length - 1] ?? 0 };
+    } else {
+     selected = { col: c, row: visRows[0] ?? 0 };
+     selectionEnd = { col: c, row: visRows[visRows.length - 1] ?? 0 };
+     selectionDragMode = 'cols';
+    }
+    refreshDisplay();
     sheetWrap.focus({ preventScroll: true });
    });
    headRow.append(th);
@@ -354,8 +405,18 @@
    const tr = el('tr');
    const rowTh = el('th', { textContent: String(r + 1) });
    rowTh.dataset.row = String(r);
-   rowTh.addEventListener('click', () => {
-    selectCell(visCols[0] ?? 0, r);
+   rowTh.addEventListener('mousedown', e => {
+    if (e.button !== 0 || getFormulaEditor() || editing) return;
+    e.preventDefault();
+    if (e.shiftKey) {
+     selected.col = visCols[0] ?? 0;
+     selectionEnd = { col: visCols[visCols.length - 1] ?? 0, row: r };
+    } else {
+     selected = { col: visCols[0] ?? 0, row: r };
+     selectionEnd = { col: visCols[visCols.length - 1] ?? 0, row: r };
+     selectionDragMode = 'rows';
+    }
+    refreshDisplay();
     sheetWrap.focus({ preventScroll: true });
    });
    tr.append(rowTh);
@@ -369,19 +430,28 @@
     td.addEventListener('mousedown', e => {
      if (e.button !== 0) return;
      const editor = getFormulaEditor();
-     if (!editor) return;
-     e.preventDefault();
-     dragStart = { col: c, row: r };
-     applyPointedRef(editor, dragStart, dragStart);
+     if (editor) {
+      e.preventDefault();
+      dragStart = { col: c, row: r };
+      applyPointedRef(editor, dragStart, dragStart);
+      return;
+     }
+     if (editing) return;
+     didDragSelection = false;
+     cellClickEditReady = !e.shiftKey && selected.col === c && selected.row === r && selectionEnd.col === c && selectionEnd.row === r;
+     if (!cellClickEditReady) {
+      selectCell(c, r, false, e.shiftKey);
+      if (!e.shiftKey) selectionDragMode = 'cells';
+      sheetWrap.focus({ preventScroll: true });
+     } else {
+      selectionDragMode = 'cells';
+     }
     });
     td.addEventListener('click', () => {
      if (editing || getFormulaEditor()) return;
-     if (selected.col === c && selected.row === r) {
-      startEdit();
-     } else {
-      selectCell(c, r, false);
-      sheetWrap.focus({ preventScroll: true });
-     }
+     if (cellClickEditReady && !didDragSelection) startEdit();
+     cellClickEditReady = false;
+     didDragSelection = false;
     });
     td.addEventListener('dblclick', () => {
      if (getFormulaEditor()) return;
@@ -428,26 +498,49 @@
   showUpdatedAt();
  }
 
+ function clearSelectedCells() {
+  const sheet = activeSheet();
+  const bounds = getSelectionBounds(sheet);
+  let dirty = false;
+  for (let r = bounds.minRow; r <= bounds.maxRow; r++) {
+   for (let c = bounds.minCol; c <= bounds.maxCol; c++) {
+    if (setCellValue(sheet, formatCellRef(c, r), '')) dirty = true;
+   }
+  }
+  if (dirty) refreshDisplay();
+ }
+
  // 키보드 탐색 · 직접 입력 · 삭제 · 복사
  sheetWrap.addEventListener('keydown', e => {
   if (editing || document.activeElement === formulaInput) return;
   const sheet = activeSheet();
-  const key = formatCellRef(selected.col, selected.row);
 
-  if (e.key === 'ArrowUp') { e.preventDefault(); moveSelection(0, -1); return; }
-  if (e.key === 'ArrowDown') { e.preventDefault(); moveSelection(0, 1); return; }
-  if (e.key === 'ArrowLeft') { e.preventDefault(); moveSelection(-1, 0); return; }
-  if (e.key === 'ArrowRight') { e.preventDefault(); moveSelection(1, 0); return; }
+  if (e.key === 'ArrowUp') { e.preventDefault(); moveSelection(0, -1, e.shiftKey); return; }
+  if (e.key === 'ArrowDown') { e.preventDefault(); moveSelection(0, 1, e.shiftKey); return; }
+  if (e.key === 'ArrowLeft') { e.preventDefault(); moveSelection(-1, 0, e.shiftKey); return; }
+  if (e.key === 'ArrowRight') { e.preventDefault(); moveSelection(1, 0, e.shiftKey); return; }
   if (e.key === 'Tab') { e.preventDefault(); moveSelection(e.shiftKey ? -1 : 1, 0); return; }
   if (e.key === 'Enter' || e.key === 'F2') { e.preventDefault(); startEdit(); return; }
   if (e.key === 'Backspace' || e.key === 'Delete') {
    e.preventDefault();
-   if (setCellValue(sheet, key, '')) refreshDisplay();
+   clearSelectedCells();
    return;
   }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'c') {
-   const val = sheet.cells[key] ?? '';
-   navigator.clipboard?.writeText(val).catch(() => {});
+   const bounds = getSelectionBounds(sheet);
+   const hiddenCols = new Set(sheet.hiddenCols || []);
+   const hiddenRows = new Set(sheet.hiddenRows || []);
+   const lines = [];
+   for (let r = bounds.minRow; r <= bounds.maxRow; r++) {
+    if (hiddenRows.has(r)) continue;
+    const cols = [];
+    for (let c = bounds.minCol; c <= bounds.maxCol; c++) {
+     if (hiddenCols.has(c)) continue;
+     cols.push(sheet.cells[formatCellRef(c, r)] ?? '');
+    }
+    lines.push(cols.join('\t'));
+   }
+   navigator.clipboard?.writeText(lines.join('\n')).catch(() => {});
    return;
   }
   if (!e.metaKey && !e.ctrlKey && !e.altKey && e.key.length === 1) {
@@ -479,18 +572,48 @@
   else refreshDisplay();
  });
 
- // 수식 입력 중 셀·드래그 범위 선택
+ // 수식 입력 중 셀·드래그 범위 선택 및 일반 셀·열·행 드래그 선택
  sheetWrap.addEventListener('mousemove', e => {
-  if (!dragStart) return;
-  const editor = getFormulaEditor();
-  if (!editor) { dragStart = null; return; }
-  const td = e.target.closest('td[data-col]');
-  if (!td) return;
-  applyPointedRef(editor, dragStart, { col: Number(td.dataset.col), row: Number(td.dataset.row) });
+  if (dragStart) {
+   const editor = getFormulaEditor();
+   if (!editor) { dragStart = null; return; }
+   const td = e.target.closest('td[data-col]');
+   if (!td) return;
+   applyPointedRef(editor, dragStart, { col: Number(td.dataset.col), row: Number(td.dataset.row) });
+   return;
+  }
+  if (!selectionDragMode) return;
+  if (selectionDragMode === 'cells') {
+   const td = e.target.closest('td[data-col]');
+   if (!td) return;
+   const c = Number(td.dataset.col), r = Number(td.dataset.row);
+   if (selectionEnd.col !== c || selectionEnd.row !== r) {
+    didDragSelection = true;
+    selectionEnd = { col: c, row: r };
+    refreshDisplay();
+   }
+  } else if (selectionDragMode === 'cols') {
+   const cell = e.target.closest('[data-col]');
+   if (!cell) return;
+   const c = Number(cell.dataset.col);
+   if (selectionEnd.col !== c) {
+    selectionEnd.col = c;
+    refreshDisplay();
+   }
+  } else if (selectionDragMode === 'rows') {
+   const cell = e.target.closest('[data-row]');
+   if (!cell) return;
+   const r = Number(cell.dataset.row);
+   if (selectionEnd.row !== r) {
+    selectionEnd.row = r;
+    refreshDisplay();
+   }
+  }
  });
 
  window.addEventListener('mouseup', () => {
   dragStart = null;
+  selectionDragMode = null;
  });
 
  // 수식 입력줄
@@ -572,26 +695,30 @@
 
  $('#hideRowBtn').addEventListener('click', () => {
   const sheet = activeSheet();
+  const bounds = getSelectionBounds(sheet);
   const vis = visibleIndices(sheet.rows, sheet.hiddenRows);
-  if (vis.length <= 1) return;
-  if (!sheet.hiddenRows.includes(selected.row)) {
-   sheet.hiddenRows.push(selected.row);
-   clampSelection(sheet);
-   changed();
-   renderGrid();
+  const toHide = vis.filter(r => r >= bounds.minRow && r <= bounds.maxRow);
+  if (!toHide.length || vis.length - toHide.length < 1) return;
+  for (const r of toHide) {
+   if (!sheet.hiddenRows.includes(r)) sheet.hiddenRows.push(r);
   }
+  clampSelection(sheet);
+  changed();
+  renderGrid();
  });
 
  $('#hideColBtn').addEventListener('click', () => {
   const sheet = activeSheet();
+  const bounds = getSelectionBounds(sheet);
   const vis = visibleIndices(sheet.cols, sheet.hiddenCols);
-  if (vis.length <= 1) return;
-  if (!sheet.hiddenCols.includes(selected.col)) {
-   sheet.hiddenCols.push(selected.col);
-   clampSelection(sheet);
-   changed();
-   renderGrid();
+  const toHide = vis.filter(c => c >= bounds.minCol && c <= bounds.maxCol);
+  if (!toHide.length || vis.length - toHide.length < 1) return;
+  for (const c of toHide) {
+   if (!sheet.hiddenCols.includes(c)) sheet.hiddenCols.push(c);
   }
+  clampSelection(sheet);
+  changed();
+  renderGrid();
  });
 
  $('#unhideAllBtn').addEventListener('click', () => {
@@ -620,16 +747,15 @@
  function applyTheme(themeName) {
   const sheet = activeSheet();
   if (!sheet.themes) sheet.themes = {};
-  if (themeRowMode.checked) {
-   for (let c = 0; c < sheet.cols; c++) {
-    const k = formatCellRef(c, selected.row);
+  const bounds = getSelectionBounds(sheet);
+  const minCol = themeRowMode.checked ? 0 : bounds.minCol;
+  const maxCol = themeRowMode.checked ? sheet.cols - 1 : bounds.maxCol;
+  for (let r = bounds.minRow; r <= bounds.maxRow; r++) {
+   for (let c = minCol; c <= maxCol; c++) {
+    const k = formatCellRef(c, r);
     if (themeName) sheet.themes[k] = themeName;
     else delete sheet.themes[k];
    }
-  } else {
-   const k = formatCellRef(selected.col, selected.row);
-   if (themeName) sheet.themes[k] = themeName;
-   else delete sheet.themes[k];
   }
   changed();
   refreshDisplay();
@@ -642,9 +768,7 @@
  $('#clearThemeBtn').addEventListener('click', () => applyTheme(''));
 
  $('#clearCellBtn').addEventListener('click', () => {
-  const sheet = activeSheet();
-  const key = formatCellRef(selected.col, selected.row);
-  if (setCellValue(sheet, key, '')) refreshDisplay();
+  clearSelectedCells();
   sheetWrap.focus({ preventScroll: true });
  });
 
