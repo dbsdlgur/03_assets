@@ -9,7 +9,7 @@ async function decryptToken(value,key){const data=await crypto.subtle.decrypt({n
 async function decryptHTML(payload,key){if(payload.version!==1||payload.kdf!=='PBKDF2-SHA256'||payload.iterations!==600000)throw Error('지원하지 않는 파일 형식입니다.');const data=await crypto.subtle.decrypt({name:'AES-GCM',iv:unbase64(payload.iv)},key,unbase64(payload.data));return new TextDecoder().decode(data)}
 
 (()=>{
- const REPO='ericyoon2/03_assets',BRANCH='master',DATA_PATH='data.enc.json',SRC_DIR='src/';
+ const REPO='dbsdlgur/03_assets',BRANCH='master',DATA_PATH='data.enc.json',SRC_DIR='src/';
  const $=id=>document.getElementById(id),frame=$('viewer'),BASE='https://api.github.com/repos/'+REPO+'/contents/';
  let payload=null,key=null,token='',dirty=false,busy=false,revision=0,rendering=false,notice='',noticeError=false,overwrite=false;
  const CONFLICT='다른 곳에서 수정된 내용이 있습니다. 저장을 한 번 더 누르면 지금 화면 값으로 덮어씁니다.';
