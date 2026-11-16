@@ -12,8 +12,21 @@
  const el = (tag, props = {}) => Object.assign(document.createElement(tag), props);
  const changed = () => parent.vaultHost?.changed();
 
+ const THEME_NAMES = ['green', 'amber', 'blue', 'gray'];
+
  function defaultSheet(name = 'Money') {
-  return { id: newId(), name, rows: 30, cols: 12, cells: {} };
+  return {
+   id: newId(),
+   name,
+   rows: 30,
+   cols: 12,
+   cells: {},
+   themes: {},
+   hiddenRows: [],
+   hiddenCols: [],
+   freezeFirstRow: false,
+   negativeTheme: true,
+  };
  }
 
  // 기존 금고의 다른 필드(비밀번호·이력 등)는 손대지 않고 그대로 보존한다.
@@ -21,13 +34,32 @@
   const s = structuredClone(input && typeof input === 'object' ? input : { schema: 1 });
   const rawMoney = s.money && typeof s.money === 'object' ? s.money : {};
   const sheets = Array.isArray(rawMoney.sheets) && rawMoney.sheets.length
-   ? rawMoney.sheets.map((sh, i) => ({
-      id: typeof sh?.id === 'string' && sh.id ? sh.id : newId(),
-      name: typeof sh?.name === 'string' && sh.name.trim() ? sh.name.trim() : `Sheet ${i + 1}`,
-      rows: Number.isInteger(sh?.rows) && sh.rows >= 1 ? sh.rows : 30,
-      cols: Number.isInteger(sh?.cols) && sh.cols >= 1 ? sh.cols : 12,
-      cells: sh?.cells && typeof sh.cells === 'object' ? { ...sh.cells } : {},
-     }))
+   ? rawMoney.sheets.map((sh, i) => {
+      const rows = Number.isInteger(sh?.rows) && sh.rows >= 1 ? sh.rows : 30;
+      const cols = Number.isInteger(sh?.cols) && sh.cols >= 1 ? sh.cols : 12;
+      const hiddenRows = Array.isArray(sh?.hiddenRows)
+       ? [...new Set(sh.hiddenRows.filter(r => Number.isInteger(r) && r >= 0 && r < rows))] : [];
+      const hiddenCols = Array.isArray(sh?.hiddenCols)
+       ? [...new Set(sh.hiddenCols.filter(c => Number.isInteger(c) && c >= 0 && c < cols))] : [];
+      const themes = {};
+      if (sh?.themes && typeof sh.themes === 'object') {
+       for (const [k, v] of Object.entries(sh.themes)) {
+        if (THEME_NAMES.includes(v)) themes[k] = v;
+       }
+      }
+      return {
+       id: typeof sh?.id === 'string' && sh.id ? sh.id : newId(),
+       name: typeof sh?.name === 'string' && sh.name.trim() ? sh.name.trim() : `Sheet ${i + 1}`,
+       rows,
+       cols,
+       cells: sh?.cells && typeof sh.cells === 'object' ? { ...sh.cells } : {},
+       themes,
+       hiddenRows,
+       hiddenCols,
+       freezeFirstRow: Boolean(sh?.freezeFirstRow),
+       negativeTheme: sh?.negativeTheme !== false,
+      };
+     })
    : [defaultSheet('Money')];
   const activeSheetId = sheets.some(sh => sh.id === rawMoney.activeSheetId) ? rawMoney.activeSheetId : sheets[0].id;
   s.money = { activeSheetId, sheets };
@@ -46,12 +78,32 @@
  const cellRefEl = $('#cellRef');
  const formulaInput = $('#formulaInput');
  const sheetTabsEl = $('#sheetTabs');
+ const themeRowMode = $('#themeRowMode');
 
  const activeSheet = () => state.money.sheets.find(s => s.id === state.money.activeSheetId) || state.money.sheets[0];
 
+ function visibleIndices(total, hiddenList) {
+  const hidden = new Set(hiddenList || []);
+  const list = [];
+  for (let i = 0; i < total; i++) if (!hidden.has(i)) list.push(i);
+  return list;
+ }
+
+ function nearestVisible(target, total, hiddenList) {
+  const visible = visibleIndices(total, hiddenList);
+  if (!visible.length) return 0;
+  let best = visible[0];
+  let bestDist = Math.abs(best - target);
+  for (const idx of visible) {
+   const d = Math.abs(idx - target);
+   if (d < bestDist) { best = idx; bestDist = d; }
+  }
+  return best;
+ }
+
  function clampSelection(sheet) {
-  selected.col = Math.max(0, Math.min(sheet.cols - 1, selected.col));
-  selected.row = Math.max(0, Math.min(sheet.rows - 1, selected.row));
+  selected.col = nearestVisible(Math.max(0, Math.min(sheet.cols - 1, selected.col)), sheet.cols, sheet.hiddenCols);
+  selected.row = nearestVisible(Math.max(0, Math.min(sheet.rows - 1, selected.row)), sheet.rows, sheet.hiddenRows);
  }
 
  function showUpdatedAt() {
@@ -77,6 +129,15 @@
   formulaInput.value = sheet.cells[key] ?? '';
  }
 
+ function updateToolbarState(sheet) {
+  const hiddenCount = (sheet.hiddenRows?.length || 0) + (sheet.hiddenCols?.length || 0);
+  const unhideBtn = $('#unhideAllBtn');
+  unhideBtn.disabled = hiddenCount === 0;
+  unhideBtn.textContent = hiddenCount ? `숨김 해제 (${hiddenCount})` : '숨김 해제';
+  $('#freezeRowBtn').setAttribute('aria-pressed', String(Boolean(sheet.freezeFirstRow)));
+  $('#negThemeBtn').setAttribute('aria-pressed', String(sheet.negativeTheme !== false));
+ }
+
  function cellElement(col, row) {
   return sheetWrap.querySelector(`td[data-col="${col}"][data-row="${row}"]`);
  }
@@ -89,11 +150,18 @@
    const row = Number(td.dataset.row);
    const isSelected = col === selected.col && row === selected.row;
    td.classList.toggle('is-selected', isSelected);
-   if (editing && isSelected) continue;
+   for (const t of THEME_NAMES) td.classList.remove(`theme-${t}`);
+   const cellTheme = sheet.themes?.[key];
+   if (cellTheme) td.classList.add(`theme-${cellTheme}`);
+   if (editing && isSelected) {
+    td.classList.remove('is-negative');
+    continue;
+   }
    const res = evaluateCell(key, sheet.cells);
    td.textContent = res.display;
    td.classList.toggle('is-number', res.isNumber);
    td.classList.toggle('is-error', Boolean(res.error));
+   td.classList.toggle('is-negative', sheet.negativeTheme !== false && res.isNumber && res.numeric < 0);
    td.title = sheet.cells[key]?.startsWith('=') ? `${sheet.cells[key]} → ${res.display}` : '';
   }
   for (const th of sheetWrap.querySelectorAll('thead th[data-col]')) {
@@ -103,13 +171,14 @@
    th.classList.toggle('is-active-header', Number(th.dataset.row) === selected.row);
   }
   updateFormulaBar();
+  updateToolbarState(sheet);
  }
 
  function selectCell(col, row, scrollIntoView = true) {
   const sheet = activeSheet();
   selected = {
-   col: Math.max(0, Math.min(sheet.cols - 1, col)),
-   row: Math.max(0, Math.min(sheet.rows - 1, row)),
+   col: nearestVisible(Math.max(0, Math.min(sheet.cols - 1, col)), sheet.cols, sheet.hiddenCols),
+   row: nearestVisible(Math.max(0, Math.min(sheet.rows - 1, row)), sheet.rows, sheet.hiddenRows),
   };
   refreshDisplay();
   if (scrollIntoView) {
@@ -212,7 +281,7 @@
    input.remove();
    refreshDisplay();
    committing = false;
-   if (move) selectCell(selected.col + move.dc, selected.row + move.dr);
+   if (move) moveSelection(move.dc, move.dr);
    sheetWrap.focus({ preventScroll: true });
   };
 
@@ -244,20 +313,36 @@
   else input.setSelectionRange(input.value.length, input.value.length);
  }
 
+ function moveSelection(dc, dr) {
+  const sheet = activeSheet();
+  const cols = visibleIndices(sheet.cols, sheet.hiddenCols);
+  const rows = visibleIndices(sheet.rows, sheet.hiddenRows);
+  const ci = Math.max(0, cols.indexOf(selected.col));
+  const ri = Math.max(0, rows.indexOf(selected.row));
+  const nextCol = cols[Math.max(0, Math.min(cols.length - 1, ci + dc))] ?? selected.col;
+  const nextRow = rows[Math.max(0, Math.min(rows.length - 1, ri + dr))] ?? selected.row;
+  selectCell(nextCol, nextRow);
+ }
+
  function renderGrid() {
   const sheet = activeSheet();
   clampSelection(sheet);
   editing = false;
 
+  const visCols = visibleIndices(sheet.cols, sheet.hiddenCols);
+  const visRows = visibleIndices(sheet.rows, sheet.hiddenRows);
+
   const table = el('table', { className: 'sheet-table' });
+  if (sheet.freezeFirstRow) table.classList.add('is-frozen-first');
+
   const thead = el('thead');
   const headRow = el('tr');
   headRow.append(el('th', { className: 'corner-cell', textContent: '' }));
-  for (let c = 0; c < sheet.cols; c++) {
+  for (const c of visCols) {
    const th = el('th', { textContent: indexToCol(c) });
    th.dataset.col = String(c);
    th.addEventListener('click', () => {
-    selectCell(c, 0);
+    selectCell(c, visRows[0] ?? 0);
     sheetWrap.focus({ preventScroll: true });
    });
    headRow.append(th);
@@ -265,17 +350,17 @@
   thead.append(headRow);
 
   const tbody = el('tbody');
-  for (let r = 0; r < sheet.rows; r++) {
+  for (const r of visRows) {
    const tr = el('tr');
    const rowTh = el('th', { textContent: String(r + 1) });
    rowTh.dataset.row = String(r);
    rowTh.addEventListener('click', () => {
-    selectCell(0, r);
+    selectCell(visCols[0] ?? 0, r);
     sheetWrap.focus({ preventScroll: true });
    });
    tr.append(rowTh);
 
-   for (let c = 0; c < sheet.cols; c++) {
+   for (const c of visCols) {
     const key = formatCellRef(c, r);
     const td = el('td');
     td.dataset.col = String(c);
@@ -349,11 +434,11 @@
   const sheet = activeSheet();
   const key = formatCellRef(selected.col, selected.row);
 
-  if (e.key === 'ArrowUp') { e.preventDefault(); selectCell(selected.col, selected.row - 1); return; }
-  if (e.key === 'ArrowDown') { e.preventDefault(); selectCell(selected.col, selected.row + 1); return; }
-  if (e.key === 'ArrowLeft') { e.preventDefault(); selectCell(selected.col - 1, selected.row); return; }
-  if (e.key === 'ArrowRight') { e.preventDefault(); selectCell(selected.col + 1, selected.row); return; }
-  if (e.key === 'Tab') { e.preventDefault(); selectCell(selected.col + (e.shiftKey ? -1 : 1), selected.row); return; }
+  if (e.key === 'ArrowUp') { e.preventDefault(); moveSelection(0, -1); return; }
+  if (e.key === 'ArrowDown') { e.preventDefault(); moveSelection(0, 1); return; }
+  if (e.key === 'ArrowLeft') { e.preventDefault(); moveSelection(-1, 0); return; }
+  if (e.key === 'ArrowRight') { e.preventDefault(); moveSelection(1, 0); return; }
+  if (e.key === 'Tab') { e.preventDefault(); moveSelection(e.shiftKey ? -1 : 1, 0); return; }
   if (e.key === 'Enter' || e.key === 'F2') { e.preventDefault(); startEdit(); return; }
   if (e.key === 'Backspace' || e.key === 'Delete') {
    e.preventDefault();
@@ -465,6 +550,8 @@
   const sheet = activeSheet();
   if (sheet.rows <= 1) return;
   sheet.cells = deleteRow(sheet.cells, selected.row);
+  sheet.themes = deleteRow(sheet.themes, selected.row);
+  sheet.hiddenRows = sheet.hiddenRows.filter(r => r !== selected.row).map(r => (r > selected.row ? r - 1 : r));
   sheet.rows -= 1;
   clampSelection(sheet);
   changed();
@@ -475,11 +562,84 @@
   const sheet = activeSheet();
   if (sheet.cols <= 1) return;
   sheet.cells = deleteCol(sheet.cells, selected.col);
+  sheet.themes = deleteCol(sheet.themes, selected.col);
+  sheet.hiddenCols = sheet.hiddenCols.filter(c => c !== selected.col).map(c => (c > selected.col ? c - 1 : c));
   sheet.cols -= 1;
   clampSelection(sheet);
   changed();
   renderGrid();
  });
+
+ $('#hideRowBtn').addEventListener('click', () => {
+  const sheet = activeSheet();
+  const vis = visibleIndices(sheet.rows, sheet.hiddenRows);
+  if (vis.length <= 1) return;
+  if (!sheet.hiddenRows.includes(selected.row)) {
+   sheet.hiddenRows.push(selected.row);
+   clampSelection(sheet);
+   changed();
+   renderGrid();
+  }
+ });
+
+ $('#hideColBtn').addEventListener('click', () => {
+  const sheet = activeSheet();
+  const vis = visibleIndices(sheet.cols, sheet.hiddenCols);
+  if (vis.length <= 1) return;
+  if (!sheet.hiddenCols.includes(selected.col)) {
+   sheet.hiddenCols.push(selected.col);
+   clampSelection(sheet);
+   changed();
+   renderGrid();
+  }
+ });
+
+ $('#unhideAllBtn').addEventListener('click', () => {
+  const sheet = activeSheet();
+  if (!sheet.hiddenRows.length && !sheet.hiddenCols.length) return;
+  sheet.hiddenRows = [];
+  sheet.hiddenCols = [];
+  changed();
+  renderGrid();
+ });
+
+ $('#freezeRowBtn').addEventListener('click', () => {
+  const sheet = activeSheet();
+  sheet.freezeFirstRow = !sheet.freezeFirstRow;
+  changed();
+  renderGrid();
+ });
+
+ $('#negThemeBtn').addEventListener('click', () => {
+  const sheet = activeSheet();
+  sheet.negativeTheme = sheet.negativeTheme === false;
+  changed();
+  refreshDisplay();
+ });
+
+ function applyTheme(themeName) {
+  const sheet = activeSheet();
+  if (!sheet.themes) sheet.themes = {};
+  if (themeRowMode.checked) {
+   for (let c = 0; c < sheet.cols; c++) {
+    const k = formatCellRef(c, selected.row);
+    if (themeName) sheet.themes[k] = themeName;
+    else delete sheet.themes[k];
+   }
+  } else {
+   const k = formatCellRef(selected.col, selected.row);
+   if (themeName) sheet.themes[k] = themeName;
+   else delete sheet.themes[k];
+  }
+  changed();
+  refreshDisplay();
+  sheetWrap.focus({ preventScroll: true });
+ }
+
+ for (const btn of document.querySelectorAll('.theme-swatch[data-theme]')) {
+  btn.addEventListener('click', () => applyTheme(btn.dataset.theme));
+ }
+ $('#clearThemeBtn').addEventListener('click', () => applyTheme(''));
 
  $('#clearCellBtn').addEventListener('click', () => {
   const sheet = activeSheet();

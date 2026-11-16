@@ -30,12 +30,26 @@
     <span class="fx-label" aria-hidden="true">fx</span>
     <input id="formulaInput" type="text" autocomplete="off" spellcheck="false" aria-label="셀 수식 또는 값" placeholder="값 또는 수식 입력 (예: =A1+B1, =SUM(A1:A5))">
    </div>
-   <div class="sheet-actions" role="toolbar" aria-label="행과 열 편집">
+   <div class="sheet-actions" role="toolbar" aria-label="행·열 및 보기 설정">
     <button id="addRowBtn" type="button">+ 행</button>
     <button id="addColBtn" type="button">+ 열</button>
     <button id="delRowBtn" type="button">행 삭제</button>
     <button id="delColBtn" type="button">열 삭제</button>
+    <button id="hideRowBtn" type="button">행 숨김</button>
+    <button id="hideColBtn" type="button">열 숨김</button>
+    <button id="unhideAllBtn" type="button" disabled>숨김 해제</button>
+    <button id="freezeRowBtn" type="button" aria-pressed="false">첫행 고정</button>
+    <button id="negThemeBtn" type="button" aria-pressed="true">0 미만 강조</button>
     <button id="clearCellBtn" type="button">지우기</button>
+   </div>
+   <div class="theme-bar" role="toolbar" aria-label="셀 테마 적용">
+    <span class="theme-label">테마</span>
+    <button type="button" class="theme-swatch theme-green" data-theme="green" title="초록 테마" aria-label="초록 테마"></button>
+    <button type="button" class="theme-swatch theme-amber" data-theme="amber" title="노랑 테마" aria-label="노랑 테마"></button>
+    <button type="button" class="theme-swatch theme-blue" data-theme="blue" title="파랑 테마" aria-label="파랑 테마"></button>
+    <button type="button" class="theme-swatch theme-gray" data-theme="gray" title="회색 테마" aria-label="회색 테마"></button>
+    <button type="button" id="clearThemeBtn" class="theme-clear" title="테마 지우기">해제</button>
+    <label class="theme-row-toggle"><input type="checkbox" id="themeRowMode"> 행 전체</label>
    </div>
   </div>
   <div id="sheetWrap" class="sheet-wrap" tabindex="0" aria-label="Money 스프레드시트"></div>
