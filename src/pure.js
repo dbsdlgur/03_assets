@@ -53,8 +53,11 @@
  function parseNumericLiteral(text) {
   const s = String(text ?? '').trim();
   if (!s) return null;
-  if (!/^[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?$/.test(s)) return null;
-  const n = Number(s.replace(/,/g, ''));
+  const m = /^(?:([+-]?)\s*₩\s*([+-]?)|([+-]?))((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)$/.exec(s);
+  if (!m) return null;
+  const sign = m[1] || m[2] || m[3] || '';
+  if (m[1] && m[2]) return null;
+  const n = Number(sign + m[4].replace(/,/g, ''));
   return Number.isFinite(n) ? n : null;
  }
 
@@ -62,6 +65,13 @@
   if (!Number.isFinite(n)) return '#ERROR!';
   const cleaned = Math.abs(n) < 1e-12 ? 0 : Math.round(n * 1e10) / 1e10;
   return cleaned.toLocaleString('en-US', { maximumFractionDigits: 6 });
+ }
+
+ function formatWon(n) {
+  if (!Number.isFinite(n)) return '#ERROR!';
+  const cleaned = Math.abs(n) < 1e-12 ? 0 : Math.round(n * 1e10) / 1e10;
+  const absText = Math.abs(cleaned).toLocaleString('en-US', { maximumFractionDigits: 6 });
+  return cleaned < 0 ? `-₩ ${absText}` : `₩ ${absText}`;
  }
 
  class FormulaError extends Error {
@@ -308,6 +318,7 @@
   expandRange,
   parseNumericLiteral,
   formatNumber,
+  formatWon,
   evaluateCell,
   insertRow,
   deleteRow,

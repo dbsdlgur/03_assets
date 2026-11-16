@@ -2,6 +2,7 @@
  const {
   indexToCol,
   formatCellRef,
+  formatWon,
   evaluateCell,
   deleteRow,
   deleteCol,
@@ -14,7 +15,7 @@
 
  const THEME_NAMES = ['green', 'amber', 'blue', 'gray', 'red', 'navy'];
 
- function defaultSheet(name = 'Money') {
+  function defaultSheet(name = 'Money') {
   return {
    id: newId(),
    name,
@@ -22,6 +23,7 @@
    cols: 12,
    cells: {},
    themes: {},
+   formats: {},
    hiddenRows: [],
    hiddenCols: [],
    freezeFirstRow: false,
@@ -47,6 +49,12 @@
         if (THEME_NAMES.includes(v)) themes[k] = v;
        }
       }
+      const formats = {};
+      if (sh?.formats && typeof sh.formats === 'object') {
+       for (const [k, v] of Object.entries(sh.formats)) {
+        if (v === 'won') formats[k] = 'won';
+       }
+      }
       return {
        id: typeof sh?.id === 'string' && sh.id ? sh.id : newId(),
        name: typeof sh?.name === 'string' && sh.name.trim() ? sh.name.trim() : `Sheet ${i + 1}`,
@@ -54,6 +62,7 @@
        cols,
        cells: sh?.cells && typeof sh.cells === 'object' ? { ...sh.cells } : {},
        themes,
+       formats,
        hiddenRows,
        hiddenCols,
        freezeFirstRow: Boolean(sh?.freezeFirstRow),
@@ -75,6 +84,49 @@
  let activeEditor = null;
  let dragStart = null;
  let refSpan = null;
+ const undoStack = [];
+ const redoStack = [];
+ const MAX_UNDO = 50;
+
+ function pushUndo() {
+  undoStack.push({
+   money: structuredClone(state.money),
+   selected: { ...selected },
+   selectionEnd: { ...selectionEnd },
+  });
+  if (undoStack.length > MAX_UNDO) undoStack.shift();
+  redoStack.length = 0;
+ }
+
+ function undo() {
+  if (!undoStack.length) return;
+  redoStack.push({
+   money: structuredClone(state.money),
+   selected: { ...selected },
+   selectionEnd: { ...selectionEnd },
+  });
+  const snap = undoStack.pop();
+  state.money = snap.money;
+  selected = snap.selected;
+  selectionEnd = snap.selectionEnd;
+  changed();
+  renderAll();
+ }
+
+ function redo() {
+  if (!redoStack.length) return;
+  undoStack.push({
+   money: structuredClone(state.money),
+   selected: { ...selected },
+   selectionEnd: { ...selectionEnd },
+  });
+  const snap = redoStack.pop();
+  state.money = snap.money;
+  selected = snap.selected;
+  selectionEnd = snap.selectionEnd;
+  changed();
+  renderAll();
+ }
 
  const sheetWrap = $('#sheetWrap');
  const cellRefEl = $('#cellRef');
@@ -154,6 +206,8 @@
   unhideBtn.textContent = hiddenCount ? `숨김 해제 (${hiddenCount})` : '숨김 해제';
   $('#freezeRowBtn').setAttribute('aria-pressed', String(Boolean(sheet.freezeFirstRow)));
   $('#negThemeBtn').setAttribute('aria-pressed', String(sheet.negativeTheme !== false));
+  const activeKey = formatCellRef(selected.col, selected.row);
+  $('#wonBtn').setAttribute('aria-pressed', String(sheet.formats?.[activeKey] === 'won'));
  }
 
  function cellElement(col, row) {
@@ -180,11 +234,14 @@
     continue;
    }
    const res = evaluateCell(key, sheet.cells);
-   td.textContent = res.display;
+   const rawStr = String(sheet.cells[key] ?? '');
+   const isWon = sheet.formats?.[key] === 'won' || (!rawStr.startsWith('=') && rawStr.includes('₩'));
+   const displayText = res.isNumber && isWon ? formatWon(res.numeric) : res.display;
+   td.textContent = displayText;
    td.classList.toggle('is-number', res.isNumber);
    td.classList.toggle('is-error', Boolean(res.error));
    td.classList.toggle('is-negative', sheet.negativeTheme !== false && res.isNumber && res.numeric < 0);
-   td.title = sheet.cells[key]?.startsWith('=') ? `${sheet.cells[key]} → ${res.display}` : '';
+   td.title = rawStr.startsWith('=') ? `${rawStr} → ${displayText}` : '';
   }
   for (const th of sheetWrap.querySelectorAll('thead th[data-col]')) {
    const c = Number(th.dataset.col);
@@ -305,7 +362,10 @@
    refSpan = null;
    clearRefHighlight();
    td.classList.remove('is-editing');
-   if (commit) setCellValue(sheet, key, input.value);
+   if (commit && input.value !== String(sheet.cells[key] ?? '')) {
+    pushUndo();
+    setCellValue(sheet, key, input.value);
+   }
    input.remove();
    refreshDisplay();
    committing = false;
@@ -514,13 +574,20 @@
  function clearSelectedCells() {
   const sheet = activeSheet();
   const bounds = getSelectionBounds(sheet);
-  let dirty = false;
-  for (let r = bounds.minRow; r <= bounds.maxRow; r++) {
+  let hasAny = false;
+  for (let r = bounds.minRow; r <= bounds.maxRow && !hasAny; r++) {
    for (let c = bounds.minCol; c <= bounds.maxCol; c++) {
-    if (setCellValue(sheet, formatCellRef(c, r), '')) dirty = true;
+    if (sheet.cells[formatCellRef(c, r)]) { hasAny = true; break; }
    }
   }
-  if (dirty) refreshDisplay();
+  if (!hasAny) return;
+  pushUndo();
+  for (let r = bounds.minRow; r <= bounds.maxRow; r++) {
+   for (let c = bounds.minCol; c <= bounds.maxCol; c++) {
+    setCellValue(sheet, formatCellRef(c, r), '');
+   }
+  }
+  refreshDisplay();
  }
 
  // 키보드 탐색 · 직접 입력 · 삭제 · 복사
@@ -568,6 +635,7 @@
   const text = e.clipboardData?.getData('text/plain');
   if (text == null) return;
   e.preventDefault();
+  pushUndo();
   const sheet = activeSheet();
   const rows = text.replace(/\r\n/g, '\n').replace(/\n$/, '').split('\n').map(line => line.split('\t'));
   const needRows = selected.row + rows.length;
@@ -642,7 +710,10 @@
    refSpan = null;
    dragStart = null;
    clearRefHighlight();
-   setCellValue(sheet, key, formulaInput.value);
+   if (formulaInput.value !== String(sheet.cells[key] ?? '')) {
+    pushUndo();
+    setCellValue(sheet, key, formulaInput.value);
+   }
    refreshDisplay();
    selectCell(selected.col, selected.row + 1);
    sheetWrap.focus({ preventScroll: true });
@@ -662,11 +733,30 @@
   clearRefHighlight();
   const sheet = activeSheet();
   const key = formatCellRef(selected.col, selected.row);
-  if (setCellValue(sheet, key, formulaInput.value)) refreshDisplay();
+  if (formulaInput.value !== String(sheet.cells[key] ?? '')) {
+   pushUndo();
+   setCellValue(sheet, key, formulaInput.value);
+   refreshDisplay();
+  }
+ });
+
+ // 전역 되돌리기 / 다시 실행 (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl/Cmd+Y)
+ window.addEventListener('keydown', e => {
+  if (editing || document.activeElement === formulaInput) return;
+  if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+  const k = e.key.toLowerCase();
+  if (k === 'z' && !e.shiftKey) {
+   e.preventDefault();
+   undo();
+  } else if ((k === 'z' && e.shiftKey) || k === 'y') {
+   e.preventDefault();
+   redo();
+  }
  });
 
  // 툴바 버튼
  $('#addRowBtn').addEventListener('click', () => {
+  pushUndo();
   const sheet = activeSheet();
   sheet.rows += 1;
   changed();
@@ -675,6 +765,7 @@
  });
 
  $('#addColBtn').addEventListener('click', () => {
+  pushUndo();
   const sheet = activeSheet();
   sheet.cols += 1;
   changed();
@@ -685,8 +776,10 @@
  $('#delRowBtn').addEventListener('click', () => {
   const sheet = activeSheet();
   if (sheet.rows <= 1) return;
+  pushUndo();
   sheet.cells = deleteRow(sheet.cells, selected.row);
   sheet.themes = deleteRow(sheet.themes, selected.row);
+  sheet.formats = deleteRow(sheet.formats, selected.row);
   sheet.hiddenRows = sheet.hiddenRows.filter(r => r !== selected.row).map(r => (r > selected.row ? r - 1 : r));
   sheet.rows -= 1;
   clampSelection(sheet);
@@ -697,8 +790,10 @@
  $('#delColBtn').addEventListener('click', () => {
   const sheet = activeSheet();
   if (sheet.cols <= 1) return;
+  pushUndo();
   sheet.cells = deleteCol(sheet.cells, selected.col);
   sheet.themes = deleteCol(sheet.themes, selected.col);
+  sheet.formats = deleteCol(sheet.formats, selected.col);
   sheet.hiddenCols = sheet.hiddenCols.filter(c => c !== selected.col).map(c => (c > selected.col ? c - 1 : c));
   sheet.cols -= 1;
   clampSelection(sheet);
@@ -712,6 +807,7 @@
   const vis = visibleIndices(sheet.rows, sheet.hiddenRows);
   const toHide = vis.filter(r => r >= bounds.minRow && r <= bounds.maxRow);
   if (!toHide.length || vis.length - toHide.length < 1) return;
+  pushUndo();
   for (const r of toHide) {
    if (!sheet.hiddenRows.includes(r)) sheet.hiddenRows.push(r);
   }
@@ -726,6 +822,7 @@
   const vis = visibleIndices(sheet.cols, sheet.hiddenCols);
   const toHide = vis.filter(c => c >= bounds.minCol && c <= bounds.maxCol);
   if (!toHide.length || vis.length - toHide.length < 1) return;
+  pushUndo();
   for (const c of toHide) {
    if (!sheet.hiddenCols.includes(c)) sheet.hiddenCols.push(c);
   }
@@ -737,6 +834,7 @@
  $('#unhideAllBtn').addEventListener('click', () => {
   const sheet = activeSheet();
   if (!sheet.hiddenRows.length && !sheet.hiddenCols.length) return;
+  pushUndo();
   sheet.hiddenRows = [];
   sheet.hiddenCols = [];
   changed();
@@ -744,6 +842,7 @@
  });
 
  $('#freezeRowBtn').addEventListener('click', () => {
+  pushUndo();
   const sheet = activeSheet();
   sheet.freezeFirstRow = !sheet.freezeFirstRow;
   changed();
@@ -751,15 +850,40 @@
  });
 
  $('#negThemeBtn').addEventListener('click', () => {
+  pushUndo();
   const sheet = activeSheet();
   sheet.negativeTheme = sheet.negativeTheme === false;
   changed();
   refreshDisplay();
  });
 
+ $('#wonBtn').addEventListener('click', () => {
+  const sheet = activeSheet();
+  if (!sheet.formats) sheet.formats = {};
+  const bounds = getSelectionBounds(sheet);
+  let allWon = true;
+  for (let r = bounds.minRow; r <= bounds.maxRow && allWon; r++) {
+   for (let c = bounds.minCol; c <= bounds.maxCol; c++) {
+    if (sheet.formats[formatCellRef(c, r)] !== 'won') { allWon = false; break; }
+   }
+  }
+  pushUndo();
+  for (let r = bounds.minRow; r <= bounds.maxRow; r++) {
+   for (let c = bounds.minCol; c <= bounds.maxCol; c++) {
+    const k = formatCellRef(c, r);
+    if (allWon) delete sheet.formats[k];
+    else sheet.formats[k] = 'won';
+   }
+  }
+  changed();
+  refreshDisplay();
+  sheetWrap.focus({ preventScroll: true });
+ });
+
  function applyTheme(themeName) {
   const sheet = activeSheet();
   if (!sheet.themes) sheet.themes = {};
+  pushUndo();
   const bounds = getSelectionBounds(sheet);
   const minCol = themeRowMode.checked ? 0 : bounds.minCol;
   const maxCol = themeRowMode.checked ? sheet.cols - 1 : bounds.maxCol;
@@ -786,11 +910,13 @@
  });
 
  $('#addSheetBtn').addEventListener('click', () => {
+  pushUndo();
   const nextNum = state.money.sheets.length + 1;
   const sheet = defaultSheet(`Sheet ${nextNum}`);
   state.money.sheets.push(sheet);
   state.money.activeSheetId = sheet.id;
   selected = { col: 0, row: 0 };
+  selectionEnd = { col: 0, row: 0 };
   changed();
   renderAll();
  });
@@ -799,6 +925,7 @@
   const sheet = activeSheet();
   const name = prompt('시트 이름을 입력하세요.', sheet.name);
   if (!name || !name.trim() || name.trim() === sheet.name) return;
+  pushUndo();
   sheet.name = name.trim();
   changed();
   renderSheetTabs();
@@ -809,9 +936,11 @@
   const sheet = activeSheet();
   const hasData = Object.keys(sheet.cells).length > 0;
   if (hasData && !confirm(`"${sheet.name}" 시트를 삭제할까요?`)) return;
+  pushUndo();
   state.money.sheets = state.money.sheets.filter(s => s.id !== sheet.id);
   state.money.activeSheetId = state.money.sheets[0].id;
   selected = { col: 0, row: 0 };
+  selectionEnd = { col: 0, row: 0 };
   changed();
   renderAll();
  });
@@ -819,7 +948,10 @@
  window.vaultApi = {
   load(input) {
    state = normalize(input);
+   undoStack.length = 0;
+   redoStack.length = 0;
    selected = { col: 0, row: 0 };
+   selectionEnd = { col: 0, row: 0 };
    renderAll();
   },
   serialize() {
