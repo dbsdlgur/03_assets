@@ -12,7 +12,7 @@
  const el = (tag, props = {}) => Object.assign(document.createElement(tag), props);
  const changed = () => parent.vaultHost?.changed();
 
- const THEME_NAMES = ['green', 'amber', 'blue', 'gray'];
+ const THEME_NAMES = ['green', 'amber', 'blue', 'gray', 'red', 'navy'];
 
  function defaultSheet(name = 'Money') {
   return {
@@ -379,9 +379,14 @@
   });
   headRow.append(corner);
 
-  for (const c of visCols) {
+  for (let ci = 0; ci < visCols.length; ci++) {
+   const c = visCols[ci];
    const th = el('th', { textContent: indexToCol(c) });
    th.dataset.col = String(c);
+   const hiddenBefore = (ci === 0 && c > 0) || (ci > 0 && c - visCols[ci - 1] > 1);
+   const hiddenAfter = ci === visCols.length - 1 && c < sheet.cols - 1;
+   if (hiddenBefore) th.classList.add('has-hidden-col-before');
+   if (hiddenAfter) th.classList.add('has-hidden-col-after');
    th.addEventListener('mousedown', e => {
     if (e.button !== 0 || getFormulaEditor() || editing) return;
     e.preventDefault();
@@ -401,8 +406,13 @@
   thead.append(headRow);
 
   const tbody = el('tbody');
-  for (const r of visRows) {
+  for (let ri = 0; ri < visRows.length; ri++) {
+   const r = visRows[ri];
    const tr = el('tr');
+   const hiddenRowBefore = (ri === 0 && r > 0) || (ri > 0 && r - visRows[ri - 1] > 1);
+   const hiddenRowAfter = ri === visRows.length - 1 && r < sheet.rows - 1;
+   if (hiddenRowBefore) tr.classList.add('has-hidden-row-before');
+   if (hiddenRowAfter) tr.classList.add('has-hidden-row-after');
    const rowTh = el('th', { textContent: String(r + 1) });
    rowTh.dataset.row = String(r);
    rowTh.addEventListener('mousedown', e => {
@@ -421,12 +431,15 @@
    });
    tr.append(rowTh);
 
-   for (const c of visCols) {
+   for (let ci = 0; ci < visCols.length; ci++) {
+    const c = visCols[ci];
     const key = formatCellRef(c, r);
     const td = el('td');
     td.dataset.col = String(c);
     td.dataset.row = String(r);
     td.dataset.key = key;
+    if ((ci === 0 && c > 0) || (ci > 0 && c - visCols[ci - 1] > 1)) td.classList.add('has-hidden-col-before');
+    if (ci === visCols.length - 1 && c < sheet.cols - 1) td.classList.add('has-hidden-col-after');
     td.addEventListener('mousedown', e => {
      if (e.button !== 0) return;
      const editor = getFormulaEditor();
