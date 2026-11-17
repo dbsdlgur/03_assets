@@ -536,6 +536,7 @@ main.sheet-main{max-width:1880px;padding:0 var(--sp-5) var(--sp-4)}
 .sheet-tab-actions{display:flex;gap:var(--sp-1)}
 .sheet-tab-actions button{min-height:32px;padding:0 var(--sp-2);font-size:var(--fs-xs)}
 .sheet-action-compact{display:none}
+.money-title-initial{display:none}
 .sheet-view-bar{display:flex;flex:none;align-items:center;justify-content:flex-end;gap:var(--sp-1)}
 .sheet-view-bar button{min-height:28px;min-width:28px;padding:0 var(--sp-2);font-size:12px}
 #zoomResetBtn{min-width:56px;font-variant-numeric:tabular-nums}
@@ -613,4 +614,28 @@ main.sheet-main{max-width:1880px;padding:0 var(--sp-5) var(--sp-4)}
  .sheet-tab-actions button{min-height:28px;min-width:24px;padding:0 5px;font-size:11px}
  .sheet-action-full{display:none}
  .sheet-action-compact{display:inline}
+}
+
+/* 모바일 상단을 한 줄로 모으고 편집 도구의 세로 공간을 줄인다. */
+@media(max-width:640px){
+ .money-title-full{display:none}
+ .money-title-initial{display:inline}
+ .sheet-main .top{gap:var(--sp-1);padding:var(--sp-1) 0}
+ .sheet-main .actions{align-items:center;gap:2px}
+ .sheet-main .top button{min-height:26px;padding:0 4px;font-size:11px}
+ .sheet-main #tab-money{min-height:26px;font-size:14px}
+ .sheet-main #editLockBtn{min-width:44px}
+ .sheet-main #saveBtn{min-height:26px;padding:0 6px}
+ .sheet-main .sheet-view-bar{gap:2px}
+ .sheet-view-bar .sheet-action-label{display:none}
+ .sheet-main .sheet-view-bar button{min-width:24px}
+ .sheet-main #zoomResetBtn{min-width:38px}
+ .sheet-main .save-meta{gap:var(--sp-1)}
+ .sheet-main #updatedAt,.sheet-main #saveStatus{font-size:10px}
+ .sheet-toolbar{gap:var(--sp-1)}
+ .sheet-main .cell-ref,.sheet-main #formulaInput{height:30px}
+ .sheet-main .cell-ref{min-width:40px;padding:0 var(--sp-1);font-size:11px}
+ .sheet-main .sheet-toolbar button{height:28px;min-height:28px;padding:0 6px;font-size:11px}
+ .sheet-main .sheet-toolbar .theme-swatch{width:24px;min-width:24px;padding:0}
+ .sheet-options .theme-bar{gap:var(--sp-1);margin-left:var(--sp-1)}
 }
