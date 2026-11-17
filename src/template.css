@@ -526,12 +526,24 @@ main.sheet-main{max-width:1880px;padding:0 var(--sp-5) var(--sp-4)}
 .sheet-tab-actions{display:flex;gap:var(--sp-1)}
 .sheet-tab-actions button{min-height:32px;padding:0 var(--sp-2);font-size:var(--fs-xs)}
 
+/* 모바일은 한 화면 안에서 셀 영역만 세로 스크롤한다.
+   페이지·시트의 이중 스크롤과 sticky 헤더가 탭까지 다시 합성하는 것을 피한다. */
+@media(max-width:640px){
+ html,body{height:100%;overflow:hidden}
+ main.sheet-main{height:100svh;display:flex;flex-direction:column;overflow:hidden}
+ main.sheet-main .app-header{position:static;flex:none}
+ .money-panel{flex:1;min-height:0;overflow:hidden}
+ .sheet-toolbar,.sheet-tabs-bar{flex:none}
+ .sheet-wrap{flex:1;contain:paint}
+ .sheet-tabs{overflow-y:hidden}
+}
+
 @media(max-width:640px){
  /* 주소창이 접히는 동안 시트 높이와 반투명 헤더를 매 프레임 재합성하지 않는다. */
  main.sheet-main .app-header{background:var(--surface);border-image:none;border-bottom:1px solid var(--line);-webkit-backdrop-filter:none;backdrop-filter:none}
  main.sheet-main{padding:0 var(--sp-2) var(--sp-4)}
  .money-panel{padding:var(--sp-3)}
- .sheet-wrap{max-height:calc(100svh - 300px)}
+ .sheet-wrap{max-height:none;min-height:0}
  .sheet-table thead th{width:96px;min-width:84px}
  .sheet-table td .cell-editor{font-size:16px}
 }
@@ -553,7 +565,7 @@ main.sheet-main{max-width:1880px;padding:0 var(--sp-5) var(--sp-4)}
  .theme-label,.theme-row-toggle,.theme-clear{flex:0 0 auto}
  .theme-swatch{flex:0 0 auto;width:32px;min-width:32px;min-height:40px;height:40px}
  .theme-clear,.theme-row-toggle{min-height:40px}
- .sheet-wrap{max-height:calc(100svh - 320px);min-height:min(240px,50svh)}
+ .sheet-wrap{max-height:none;min-height:0}
  .sheet-table th,.sheet-table td{height:40px;padding:0 var(--sp-2);font-size:14px}
  .sheet-table thead th{width:112px;min-width:112px}
  .sheet-table thead th.corner-cell,.sheet-table tbody th{width:34px;min-width:34px;font-size:11px}
