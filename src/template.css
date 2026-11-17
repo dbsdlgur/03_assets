@@ -485,13 +485,8 @@ main.sheet-main{max-width:1880px;padding:0 var(--sp-5) var(--sp-4)}
 .theme-swatch{width:26px;min-width:26px;min-height:26px;height:26px;padding:0;border-radius:6px;border:1px solid rgba(0,0,0,.18)}
 .theme-swatch.theme-green{background:#92d050}
 .theme-swatch.theme-amber{background:#ffc000}
-.theme-swatch.theme-blue{background:#dce6f1}
 .theme-swatch.theme-gray{background:#d9d9d9}
-.theme-swatch.theme-red{background:#e5534b}
-.theme-swatch.theme-navy{background:#1e3a8a}
 .theme-clear{min-height:28px;padding:0 var(--sp-2);font-size:var(--fs-xs)}
-.theme-row-toggle{display:inline-flex;align-items:center;gap:4px;margin-left:var(--sp-1);font-size:var(--fs-xs);color:var(--ink-2);cursor:pointer;user-select:none}
-.theme-row-toggle input{width:15px;height:15px;min-height:0;margin:0;accent-color:var(--brand)}
 
 .sheet-wrap{position:relative;min-width:0;overflow:auto;max-height:calc(100dvh - 220px);min-height:380px;border:1px solid var(--line-2);border-radius:var(--r-input);background:var(--surface);outline:none;-webkit-overflow-scrolling:touch}
 .sheet-table{width:max-content;min-width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed}
@@ -577,9 +572,9 @@ main.sheet-main{max-width:1880px;padding:0 var(--sp-5) var(--sp-4)}
  .sheet-actions{flex-wrap:nowrap;overflow-x:auto;min-width:0;max-width:100%;scrollbar-width:thin;-webkit-overflow-scrolling:touch;padding-bottom:2px}
  .sheet-actions button{flex:0 0 auto;min-height:40px;padding:0 var(--sp-2);font-size:13px}
  .theme-bar{flex-wrap:wrap;gap:6px}
- .theme-label,.theme-row-toggle,.theme-clear{flex:0 0 auto}
+ .theme-label,.theme-clear{flex:0 0 auto}
  .theme-swatch{flex:0 0 auto;width:32px;min-width:32px;min-height:40px;height:40px}
- .theme-clear,.theme-row-toggle{min-height:40px}
+ .theme-clear{min-height:40px}
  .sheet-wrap{max-height:none;min-height:0}
  .sheet-table th,.sheet-table td{height:40px;padding:0 var(--sp-2);font-size:14px}
  .sheet-table thead th{width:112px;min-width:112px}
@@ -592,4 +587,21 @@ main.sheet-main{max-width:1880px;padding:0 var(--sp-5) var(--sp-4)}
  .sheet-tab{flex:0 0 auto;min-height:40px;font-size:13px}
  .sheet-tab-actions{justify-content:flex-end;flex-wrap:wrap}
  .sheet-tab-actions button{min-height:40px}
+}
+
+/* 도구는 라벨과 짧은 동작 버튼을 묶어 표시한다. */
+.sheet-action-group{display:flex;flex:none;align-items:center;gap:var(--sp-1)}
+.sheet-action-group+.sheet-action-group{margin-left:var(--sp-2)}
+.sheet-action-label{font-size:var(--fs-xs);color:var(--muted);margin-right:2px;white-space:nowrap}
+.sheet-action-group button{min-width:32px;padding:0 var(--sp-2)}
+
+/* 모바일의 좌표 머리와 시트 탭만 줄이고, 셀 본문 크기는 유지한다. */
+@media(max-width:640px){
+ .sheet-table thead th{height:24px;padding:0 var(--sp-1);font-size:11px}
+ .sheet-table thead th.corner-cell,.sheet-table tbody th{width:26px;min-width:26px;padding:0 2px;font-size:10px}
+ .sheet-table.is-frozen-first tbody tr:first-child td,
+ .sheet-table.is-frozen-first tbody tr:first-child th{top:24px}
+ .sheet-main .sheet-tabs{flex:0 1 auto;justify-content:flex-start;gap:var(--sp-1);min-width:0;max-width:100%}
+ .sheet-tabs .sheet-tab{flex:none;min-height:28px;padding:0 var(--sp-2);font-size:12px}
+ .sheet-tabs-bar{gap:var(--sp-1)}
 }

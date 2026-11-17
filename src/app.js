@@ -135,7 +135,6 @@
  const cellRefEl = $('#cellRef');
  const formulaInput = $('#formulaInput');
  const sheetTabsEl = $('#sheetTabs');
- const themeRowMode = $('#themeRowMode');
 
  function setEditLocked(locked) {
   // Finish an in-progress edit before entering read-only mode.
@@ -239,7 +238,8 @@
   const hiddenCount = (sheet.hiddenRows?.length || 0) + (sheet.hiddenCols?.length || 0);
   const unhideBtn = $('#unhideAllBtn');
   unhideBtn.disabled = isLocked || hiddenCount === 0;
-  unhideBtn.textContent = hiddenCount ? `숨김 해제 (${hiddenCount})` : '숨김 해제';
+  unhideBtn.textContent = `해제 (${hiddenCount})`;
+  unhideBtn.setAttribute('aria-label', `숨김 해제 (${hiddenCount})`);
   $('#freezeRowBtn').setAttribute('aria-pressed', String(Boolean(sheet.freezeFirstRow)));
   $('#negThemeBtn').setAttribute('aria-pressed', String(sheet.negativeTheme !== false));
   const activeKey = formatCellRef(selected.col, selected.row);
@@ -993,8 +993,8 @@
   if (!sheet.themes) sheet.themes = {};
   pushUndo();
   const bounds = getSelectionBounds(sheet);
-  const minCol = themeRowMode.checked ? 0 : bounds.minCol;
-  const maxCol = themeRowMode.checked ? sheet.cols - 1 : bounds.maxCol;
+  const minCol = bounds.minCol;
+  const maxCol = bounds.maxCol;
   for (let r = bounds.minRow; r <= bounds.maxRow; r++) {
    for (let c = minCol; c <= maxCol; c++) {
     const k = formatCellRef(c, r);
