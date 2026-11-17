@@ -454,14 +454,29 @@ button.toggle[aria-pressed=true]{background:var(--ink);border-color:var(--ink);c
 /* ── Money 엑셀 시트 (1920px PC ~ 320px 모바일) ── */
 main.sheet-main{max-width:1880px;padding:0 var(--sp-5) var(--sp-4)}
 .money-panel{display:flex;flex-direction:column;min-width:0;gap:var(--sp-3);background:var(--surface);border:1px solid var(--line);border-radius:var(--r-card);padding:var(--sp-4)}
-.sheet-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2)}
+.sheet-main .top{grid-template-columns:auto minmax(0,1fr) auto;gap:var(--sp-2)}
+.sheet-main .top .tab-bar{grid-column:1;grid-row:1;min-width:0}
+.sheet-main .save-meta{grid-column:2;grid-row:1;flex-wrap:nowrap;overflow:hidden}
+.sheet-main #updatedAt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;overflow-wrap:normal}
+.sheet-main .actions{grid-column:3;gap:var(--sp-1)}
+.sheet-main .top button{padding:0 var(--sp-3)}
+.sheet-main #tab-money{padding:0}
+#editLockBtn{min-width:76px}
+#editLockBtn[aria-pressed=true]{background:var(--brand-soft);border-color:var(--brand);color:var(--brand)}
+.sheet-toolbar{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--sp-2)}
+.sheet-options{display:flex;align-items:center;gap:var(--sp-1);min-width:0;overflow-x:auto;scrollbar-width:thin;padding-bottom:2px}
+.sheet-options>button,.sheet-options .theme-bar{flex:none}
+.sheet-options>button{min-height:40px;padding:0 var(--sp-2);font-size:var(--fs-xs)}
+.sheet-options>button[aria-pressed=true]{background:var(--brand-soft);border-color:var(--brand);color:var(--brand)}
+.sheet-options .theme-bar{flex-wrap:nowrap;margin-left:var(--sp-2)}
 .formula-bar{flex:1 1 320px;display:flex;align-items:center;min-width:0;border:1px solid var(--line-2);border-radius:var(--r-input);background:var(--surface);overflow:hidden}
 .formula-bar:focus-within{outline:2px solid var(--focus-ring);outline-offset:0;border-color:transparent}
 .cell-ref{min-width:56px;padding:0 var(--sp-2);height:36px;display:inline-flex;align-items:center;justify-content:center;background:var(--surface-2);border-right:1px solid var(--line);font-family:var(--font-mono);font-size:var(--fs-sm);font-weight:600;color:var(--ink)}
 .fx-label{padding:0 var(--sp-2);font-family:var(--font-mono);font-size:var(--fs-sm);font-style:italic;color:var(--muted);user-select:none}
 #formulaInput{flex:1;min-width:0;height:36px;padding:0 var(--sp-2) 0 0;border:0;background:transparent;font-family:var(--font-mono);font-size:var(--fs-sm);color:var(--ink)}
 #formulaInput:focus{outline:none}
-.sheet-actions{display:flex;flex-wrap:wrap;gap:var(--sp-1)}
+.sheet-actions{display:flex;flex-wrap:nowrap;min-width:0;overflow-x:auto;scrollbar-width:thin;gap:var(--sp-1);padding-bottom:2px}
+.sheet-actions button{flex:none}
 .sheet-actions button{min-height:36px;padding:0 var(--sp-3);font-size:var(--fs-xs)}
 .sheet-actions button[aria-pressed=true]{background:var(--brand-soft);border-color:var(--brand);color:var(--brand);font-weight:600}
 

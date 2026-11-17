@@ -17,48 +17,50 @@
     </div>
    </div>
    <div class="save-meta">
-    <span id="updatedAt"></span>
+    <time id="updatedAt"></time>
     <span id="saveStatus" role="status" aria-live="polite" hidden></span>
    </div>
-   <div class="actions"><button id="saveBtn" type="button" class="primary">저장</button></div>
+   <div class="actions"><button id="editLockBtn" type="button" aria-pressed="false" aria-controls="sheetToolbar sheetTabActions" title="편집 잠금">잠금</button><button id="saveBtn" type="button" class="primary">저장</button></div>
   </div>
  </header>
  <section role="tabpanel" id="panel-money" aria-labelledby="tab-money" class="money-panel">
-  <div class="sheet-toolbar">
+  <div id="sheetToolbar" class="sheet-toolbar">
    <div class="formula-bar">
     <span id="cellRef" class="cell-ref" aria-label="선택된 셀">A1</span>
     <span class="fx-label" aria-hidden="true">fx</span>
     <input id="formulaInput" type="text" autocomplete="off" spellcheck="false" aria-label="셀 수식 또는 값" placeholder="값 또는 수식 입력 (예: =A1+B1, =SUM(A1:A5))">
    </div>
-   <div class="sheet-actions" role="toolbar" aria-label="행·열 및 보기 설정">
+   <div class="sheet-actions" role="toolbar" aria-label="행·열 편집">
     <button id="addRowBtn" type="button">+ 행</button>
     <button id="addColBtn" type="button">+ 열</button>
-    <button id="delRowBtn" type="button">행 삭제</button>
-    <button id="delColBtn" type="button">열 삭제</button>
+    <button id="delRowBtn" type="button" aria-label="행 삭제" title="행 삭제">− 행</button>
+    <button id="delColBtn" type="button" aria-label="열 삭제" title="열 삭제">− 열</button>
     <button id="hideRowBtn" type="button">행 숨김</button>
     <button id="hideColBtn" type="button">열 숨김</button>
     <button id="unhideAllBtn" type="button" disabled>숨김 해제</button>
+    <button id="clearCellBtn" type="button">지우기</button>
+   </div>
+   <div class="sheet-options" role="toolbar" aria-label="보기 설정 및 셀 테마">
     <button id="freezeRowBtn" type="button" aria-pressed="false">첫행 고정</button>
     <button id="negThemeBtn" type="button" aria-pressed="true">0 미만 강조</button>
     <button id="wonBtn" type="button" aria-pressed="false" title="선택한 셀을 원(₩) 단위로 표시">₩ 원</button>
-    <button id="clearCellBtn" type="button">지우기</button>
-   </div>
-   <div class="theme-bar" role="toolbar" aria-label="셀 테마 적용">
-    <span class="theme-label">테마</span>
-    <button type="button" class="theme-swatch theme-green" data-theme="green" title="초록 테마" aria-label="초록 테마"></button>
-    <button type="button" class="theme-swatch theme-amber" data-theme="amber" title="노랑 테마" aria-label="노랑 테마"></button>
-    <button type="button" class="theme-swatch theme-blue" data-theme="blue" title="파랑 테마" aria-label="파랑 테마"></button>
-    <button type="button" class="theme-swatch theme-gray" data-theme="gray" title="회색 테마" aria-label="회색 테마"></button>
-    <button type="button" class="theme-swatch theme-red" data-theme="red" title="빨강 테마" aria-label="빨강 테마"></button>
-    <button type="button" class="theme-swatch theme-navy" data-theme="navy" title="남색 테마" aria-label="남색 테마"></button>
-    <button type="button" id="clearThemeBtn" class="theme-clear" title="테마 지우기">해제</button>
-    <label class="theme-row-toggle"><input type="checkbox" id="themeRowMode"> 행 전체</label>
+    <div class="theme-bar" role="toolbar" aria-label="셀 테마 적용">
+     <span class="theme-label">테마</span>
+     <button type="button" class="theme-swatch theme-green" data-theme="green" title="초록 테마" aria-label="초록 테마"></button>
+     <button type="button" class="theme-swatch theme-amber" data-theme="amber" title="노랑 테마" aria-label="노랑 테마"></button>
+     <button type="button" class="theme-swatch theme-blue" data-theme="blue" title="파랑 테마" aria-label="파랑 테마"></button>
+     <button type="button" class="theme-swatch theme-gray" data-theme="gray" title="회색 테마" aria-label="회색 테마"></button>
+     <button type="button" class="theme-swatch theme-red" data-theme="red" title="빨강 테마" aria-label="빨강 테마"></button>
+     <button type="button" class="theme-swatch theme-navy" data-theme="navy" title="남색 테마" aria-label="남색 테마"></button>
+     <button type="button" id="clearThemeBtn" class="theme-clear" title="테마 지우기">해제</button>
+     <label class="theme-row-toggle"><input type="checkbox" id="themeRowMode"> 행 전체</label>
+    </div>
    </div>
   </div>
   <div id="sheetWrap" class="sheet-wrap" tabindex="0" aria-label="Money 스프레드시트"></div>
   <div class="sheet-tabs-bar">
    <div id="sheetTabs" class="sheet-tabs" role="tablist" aria-label="시트 목록"></div>
-   <div class="sheet-tab-actions">
+   <div id="sheetTabActions" class="sheet-tab-actions">
     <button id="moveSheetLeftBtn" type="button" title="현재 시트 왼쪽으로 이동" aria-label="시트 왼쪽으로 이동">◀</button>
     <button id="moveSheetRightBtn" type="button" title="현재 시트 오른쪽으로 이동" aria-label="시트 오른쪽으로 이동">▶</button>
     <button id="addSheetBtn" type="button" title="새 시트 추가">+ 시트</button>

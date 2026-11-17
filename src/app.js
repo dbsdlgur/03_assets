@@ -79,6 +79,7 @@
  let selected = { col: 0, row: 0 };
  let selectionEnd = { col: 0, row: 0 };
  let selectionDragMode = null;
+ let isLocked = false;
  let editing = false;
  let committing = false;
  let activeEditor = null;
@@ -99,6 +100,7 @@
  }
 
  function undo() {
+  if (isLocked) return;
   if (!undoStack.length) return;
   redoStack.push({
    money: structuredClone(state.money),
@@ -114,6 +116,7 @@
  }
 
  function redo() {
+  if (isLocked) return;
   if (!redoStack.length) return;
   undoStack.push({
    money: structuredClone(state.money),
@@ -133,6 +136,31 @@
  const formulaInput = $('#formulaInput');
  const sheetTabsEl = $('#sheetTabs');
  const themeRowMode = $('#themeRowMode');
+
+ function setEditLocked(locked) {
+  // Finish an in-progress edit before entering read-only mode.
+  activeEditor?.blur();
+  if (document.activeElement === formulaInput) formulaInput.blur();
+  isLocked = locked;
+  dragStart = null;
+  selectionDragMode = null;
+  dragSheetIdx = -1;
+  clearRefHighlight();
+  $('#sheetToolbar').hidden = locked;
+  $('#sheetTabActions').hidden = locked;
+  formulaInput.readOnly = locked;
+  for (const control of document.querySelectorAll('#sheetToolbar button, #sheetToolbar input, #sheetTabActions button')) {
+   control.disabled = locked;
+  }
+  for (const tab of sheetTabsEl.querySelectorAll('.sheet-tab')) tab.draggable = !locked;
+  const button = $('#editLockBtn');
+  button.setAttribute('aria-pressed', String(locked));
+  button.textContent = locked ? '잠금 해제' : '잠금';
+  button.title = locked ? '편집 잠금 해제' : '편집 잠금';
+  refreshSelection();
+  updateSheetActions();
+ }
+ $('#editLockBtn').addEventListener('click', () => setEditLocked(!isLocked));
 
  const activeSheet = () => state.money.sheets.find(s => s.id === state.money.activeSheetId) || state.money.sheets[0];
 
@@ -174,10 +202,18 @@
 
  function showUpdatedAt() {
   const at = state.updatedAt ? new Date(state.updatedAt) : null;
-  $('#updatedAt').textContent = at && !isNaN(at) ? '저장 ' + at.toLocaleString('ko-KR') : '';
+  const label = $('#updatedAt');
+  const valid = at && !isNaN(at);
+  const pad = n => String(n).padStart(2, '0');
+  label.textContent = valid ? `${pad(at.getMonth() + 1)}.${pad(at.getDate())} ${pad(at.getHours())}:${pad(at.getMinutes())}` : '';
+  label.title = valid ? '저장 ' + at.toLocaleString('ko-KR') : '';
+  label.setAttribute('aria-label', label.title);
+  if (valid) label.dateTime = at.toISOString();
+  else label.removeAttribute('datetime');
  }
 
  function setCellValue(sheet, key, value) {
+  if (isLocked) return;
   const next = String(value ?? '');
   const prev = String(sheet.cells[key] ?? '');
   if (next === prev) return false;
@@ -202,7 +238,7 @@
  function updateToolbarState(sheet) {
   const hiddenCount = (sheet.hiddenRows?.length || 0) + (sheet.hiddenCols?.length || 0);
   const unhideBtn = $('#unhideAllBtn');
-  unhideBtn.disabled = hiddenCount === 0;
+  unhideBtn.disabled = isLocked || hiddenCount === 0;
   unhideBtn.textContent = hiddenCount ? `숨김 해제 (${hiddenCount})` : '숨김 해제';
   $('#freezeRowBtn').setAttribute('aria-pressed', String(Boolean(sheet.freezeFirstRow)));
   $('#negThemeBtn').setAttribute('aria-pressed', String(sheet.negativeTheme !== false));
@@ -341,7 +377,7 @@
  }
 
  function startEdit(initialText = null) {
-  if (editing) return;
+  if (isLocked || editing) return;
   const sheet = activeSheet();
   clampSelection(sheet);
   const td = cellElement(selected.col, selected.row);
@@ -552,6 +588,7 @@
  }
 
  function moveSheet(fromIdx, toIdx) {
+  if (isLocked) return;
   const sheets = state.money.sheets;
   if (fromIdx < 0 || toIdx < 0 || fromIdx >= sheets.length || toIdx >= sheets.length || fromIdx === toIdx) return;
   pushUndo();
@@ -566,13 +603,12 @@
  function renderSheetTabs() {
   sheetTabsEl.textContent = '';
   const sheets = state.money.sheets;
-  const activeIdx = sheets.findIndex(s => s.id === state.money.activeSheetId);
   sheets.forEach((sheet, idx) => {
    const btn = el('button', {
     type: 'button',
     className: 'sheet-tab',
     textContent: sheet.name,
-    draggable: true,
+    draggable: !isLocked,
    });
    btn.setAttribute('role', 'tab');
    const active = sheet.id === state.money.activeSheetId;
@@ -587,6 +623,7 @@
     renderGrid();
    });
    btn.addEventListener('dragstart', e => {
+    if (isLocked) { e.preventDefault(); return; }
     dragSheetIdx = idx;
     if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
    });
@@ -610,9 +647,15 @@
    });
    sheetTabsEl.append(btn);
   });
-  $('#delSheetBtn').disabled = sheets.length <= 1;
-  $('#moveSheetLeftBtn').disabled = activeIdx <= 0;
-  $('#moveSheetRightBtn').disabled = activeIdx < 0 || activeIdx >= sheets.length - 1;
+  updateSheetActions();
+ }
+
+ function updateSheetActions() {
+  const sheets = state.money.sheets;
+  const activeIdx = sheets.findIndex(s => s.id === state.money.activeSheetId);
+  $('#delSheetBtn').disabled = isLocked || sheets.length <= 1;
+  $('#moveSheetLeftBtn').disabled = isLocked || activeIdx <= 0;
+  $('#moveSheetRightBtn').disabled = isLocked || activeIdx < 0 || activeIdx >= sheets.length - 1;
  }
 
  function renderAll() {
@@ -622,6 +665,7 @@
  }
 
  function clearSelectedCells() {
+  if (isLocked) return;
   const sheet = activeSheet();
   const bounds = getSelectionBounds(sheet);
   let hasAny = false;
@@ -681,6 +725,7 @@
 
  // 엑셀·구글시트에서 복사한 탭/줄바꿈 데이터 붙여넣기
  sheetWrap.addEventListener('paste', e => {
+  if (isLocked) { e.preventDefault(); return; }
   if (editing || document.activeElement === formulaInput) return;
   const text = e.clipboardData?.getData('text/plain');
   if (text == null) return;
@@ -753,6 +798,7 @@
  });
 
  formulaInput.addEventListener('keydown', e => {
+  if (isLocked) return;
   const sheet = activeSheet();
   const key = formatCellRef(selected.col, selected.row);
   if (e.key === 'Enter') {
@@ -778,6 +824,7 @@
  });
 
  formulaInput.addEventListener('blur', () => {
+  if (isLocked) return;
   refSpan = null;
   dragStart = null;
   clearRefHighlight();
@@ -806,6 +853,7 @@
 
  // 툴바 버튼
  $('#addRowBtn').addEventListener('click', () => {
+  if (isLocked) return;
   pushUndo();
   const sheet = activeSheet();
   sheet.rows += 1;
@@ -815,6 +863,7 @@
  });
 
  $('#addColBtn').addEventListener('click', () => {
+  if (isLocked) return;
   pushUndo();
   const sheet = activeSheet();
   sheet.cols += 1;
@@ -824,6 +873,7 @@
  });
 
  $('#delRowBtn').addEventListener('click', () => {
+  if (isLocked) return;
   const sheet = activeSheet();
   if (sheet.rows <= 1) return;
   pushUndo();
@@ -838,6 +888,7 @@
  });
 
  $('#delColBtn').addEventListener('click', () => {
+  if (isLocked) return;
   const sheet = activeSheet();
   if (sheet.cols <= 1) return;
   pushUndo();
@@ -852,6 +903,7 @@
  });
 
  $('#hideRowBtn').addEventListener('click', () => {
+  if (isLocked) return;
   const sheet = activeSheet();
   const bounds = getSelectionBounds(sheet);
   const vis = visibleIndices(sheet.rows, sheet.hiddenRows);
@@ -867,6 +919,7 @@
  });
 
  $('#hideColBtn').addEventListener('click', () => {
+  if (isLocked) return;
   const sheet = activeSheet();
   const bounds = getSelectionBounds(sheet);
   const vis = visibleIndices(sheet.cols, sheet.hiddenCols);
@@ -882,6 +935,7 @@
  });
 
  $('#unhideAllBtn').addEventListener('click', () => {
+  if (isLocked) return;
   const sheet = activeSheet();
   if (!sheet.hiddenRows.length && !sheet.hiddenCols.length) return;
   pushUndo();
@@ -892,6 +946,7 @@
  });
 
  $('#freezeRowBtn').addEventListener('click', () => {
+  if (isLocked) return;
   pushUndo();
   const sheet = activeSheet();
   sheet.freezeFirstRow = !sheet.freezeFirstRow;
@@ -900,6 +955,7 @@
  });
 
  $('#negThemeBtn').addEventListener('click', () => {
+  if (isLocked) return;
   pushUndo();
   const sheet = activeSheet();
   sheet.negativeTheme = sheet.negativeTheme === false;
@@ -908,6 +964,7 @@
  });
 
  $('#wonBtn').addEventListener('click', () => {
+  if (isLocked) return;
   const sheet = activeSheet();
   if (!sheet.formats) sheet.formats = {};
   const bounds = getSelectionBounds(sheet);
@@ -931,6 +988,7 @@
  });
 
  function applyTheme(themeName) {
+  if (isLocked) return;
   const sheet = activeSheet();
   if (!sheet.themes) sheet.themes = {};
   pushUndo();
@@ -960,16 +1018,19 @@
  });
 
  $('#moveSheetLeftBtn').addEventListener('click', () => {
+  if (isLocked) return;
   const idx = state.money.sheets.findIndex(s => s.id === state.money.activeSheetId);
   if (idx > 0) moveSheet(idx, idx - 1);
  });
 
  $('#moveSheetRightBtn').addEventListener('click', () => {
+  if (isLocked) return;
   const idx = state.money.sheets.findIndex(s => s.id === state.money.activeSheetId);
   if (idx >= 0 && idx < state.money.sheets.length - 1) moveSheet(idx, idx + 1);
  });
 
  $('#addSheetBtn').addEventListener('click', () => {
+  if (isLocked) return;
   pushUndo();
   const nextNum = state.money.sheets.length + 1;
   const sheet = defaultSheet(`Sheet ${nextNum}`);
@@ -982,6 +1043,7 @@
  });
 
  $('#renameSheetBtn').addEventListener('click', () => {
+  if (isLocked) return;
   const sheet = activeSheet();
   const name = prompt('시트 이름을 입력하세요.', sheet.name);
   if (!name || !name.trim() || name.trim() === sheet.name) return;
@@ -992,6 +1054,7 @@
  });
 
  $('#delSheetBtn').addEventListener('click', () => {
+  if (isLocked) return;
   if (state.money.sheets.length <= 1) return;
   const sheet = activeSheet();
   const hasData = Object.keys(sheet.cells).length > 0;
