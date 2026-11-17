@@ -13,7 +13,7 @@
  const el = (tag, props = {}) => Object.assign(document.createElement(tag), props);
  const changed = () => parent.vaultHost?.changed();
 
- const THEME_NAMES = ['green', 'amber', 'blue', 'gray', 'red', 'navy'];
+ const THEME_NAMES = ['green', 'lightgreen', 'amber', 'blue', 'gray', 'red', 'navy'];
 
   function defaultSheet(name = 'Money') {
   return {
@@ -71,7 +71,7 @@
      })
    : [defaultSheet('Money')];
   const activeSheetId = sheets.some(sh => sh.id === rawMoney.activeSheetId) ? rawMoney.activeSheetId : sheets[0].id;
-  s.money = { activeSheetId, sheets };
+  s.money = { activeSheetId, sheets, editLocked: rawMoney.editLocked === true };
   return s;
  }
 
@@ -79,7 +79,7 @@
  let selected = { col: 0, row: 0 };
  let selectionEnd = { col: 0, row: 0 };
  let selectionDragMode = null;
- let isLocked = false;
+ let isLocked = state.money.editLocked;
  let editing = false;
  let committing = false;
  let activeEditor = null;
@@ -188,11 +188,13 @@
   setSheetZoom(sheetZoom * Math.exp(-e.deltaY * 0.01), { x: e.clientX - rect.left - sheetWrap.clientLeft, y: e.clientY - rect.top - sheetWrap.clientTop });
  }, { passive: false });
 
- function setEditLocked(locked) {
+ function setEditLocked(locked, notify = true) {
   // Finish an in-progress edit before entering read-only mode.
   activeEditor?.blur();
   if (document.activeElement === formulaInput) formulaInput.blur();
+  const didChange = state.money.editLocked !== locked;
   isLocked = locked;
+  state.money.editLocked = locked;
   dragStart = null;
   selectionDragMode = null;
   dragSheetIdx = -1;
@@ -210,6 +212,7 @@
   button.title = locked ? '편집 잠금 해제' : '편집 잠금';
   refreshSelection();
   updateSheetActions();
+  if (notify && didChange) changed();
  }
  $('#editLockBtn').addEventListener('click', () => setEditLocked(!isLocked));
 
@@ -1065,11 +1068,6 @@
  }
  $('#clearThemeBtn').addEventListener('click', () => applyTheme(''));
 
- $('#clearCellBtn').addEventListener('click', () => {
-  clearSelectedCells();
-  sheetWrap.focus({ preventScroll: true });
- });
-
  $('#moveSheetLeftBtn').addEventListener('click', () => {
   if (isLocked) return;
   const idx = state.money.sheets.findIndex(s => s.id === state.money.activeSheetId);
@@ -1124,11 +1122,13 @@
  window.vaultApi = {
   load(input) {
    state = normalize(input);
+   isLocked = state.money.editLocked;
    undoStack.length = 0;
    redoStack.length = 0;
    selected = { col: 0, row: 0 };
    selectionEnd = { col: 0, row: 0 };
    renderAll();
+   setEditLocked(isLocked, false);
   },
   serialize() {
    const snapshot = structuredClone(state);
