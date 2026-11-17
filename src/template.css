@@ -220,12 +220,13 @@ button.toggle[aria-pressed=true]{background:var(--ink);border-color:var(--ink);c
  [data-table^=passwords] .category-filter{flex:0 1 9em}
  .list-search{margin-bottom:var(--sp-2)}
  .table-wrap{margin:0;padding:0}
- table,tbody,tr,td{display:block}
- thead{display:none}
- tr{border:1px solid var(--line);border-radius:var(--r-ctl);padding:var(--row-pad);margin-bottom:var(--gap-tight);background:var(--surface)}
- tbody tr:hover td{background:transparent}
- td{display:grid;grid-template-columns:var(--label-w) minmax(0,1fr);align-items:center;gap:var(--sp-1);border:0;padding:var(--sp-1) 0}
- td::before{content:attr(data-label);font-size:var(--fs-xs);color:var(--muted)}
+ /* 카드형 전환은 기존 목록 표에만 적용한다. Money 시트는 행·열을 유지한다. */
+ .table-wrap :is(table,tbody,tr,td){display:block}
+ .table-wrap thead{display:none}
+ .table-wrap tr{border:1px solid var(--line);border-radius:var(--r-ctl);padding:var(--row-pad);margin-bottom:var(--gap-tight);background:var(--surface)}
+ .table-wrap tbody tr:hover td{background:transparent}
+ .table-wrap td{display:grid;grid-template-columns:var(--label-w) minmax(0,1fr);align-items:center;gap:var(--sp-1);border:0;padding:var(--sp-1) 0}
+ .table-wrap td::before{content:attr(data-label);font-size:var(--fs-xs);color:var(--muted)}
  .section:not([data-table^=passwords]) tbody td:first-child{grid-template-columns:minmax(0,1fr);margin-bottom:var(--sp-1);padding-bottom:var(--sp-2);border-bottom:1px solid var(--line)}
  .section:not([data-table^=passwords]) tbody td:first-child::before{content:none}
  .section:not([data-table^=passwords]) tbody td:first-child input,.section:not([data-table^=passwords]) tbody td:first-child select{font-size:var(--fs-lg)}
@@ -448,9 +449,9 @@ button.toggle[aria-pressed=true]{background:var(--ink);border-color:var(--ink);c
  .size-category-buttons button{padding:0 var(--sp-1);font-size:var(--fs-xs)}
 }
 
-/* ── Money 엑셀 시트 (1920px PC ~ 400px 모바일) ── */
+/* ── Money 엑셀 시트 (1920px PC ~ 320px 모바일) ── */
 main.sheet-main{max-width:1880px;padding:0 var(--sp-5) var(--sp-4)}
-.money-panel{display:flex;flex-direction:column;gap:var(--sp-3);background:var(--surface);border:1px solid var(--line);border-radius:var(--r-card);padding:var(--sp-4)}
+.money-panel{display:flex;flex-direction:column;min-width:0;gap:var(--sp-3);background:var(--surface);border:1px solid var(--line);border-radius:var(--r-card);padding:var(--sp-4)}
 .sheet-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2)}
 .formula-bar{flex:1 1 320px;display:flex;align-items:center;min-width:0;border:1px solid var(--line-2);border-radius:var(--r-input);background:var(--surface);overflow:hidden}
 .formula-bar:focus-within{outline:2px solid var(--focus-ring);outline-offset:0;border-color:transparent}
@@ -475,7 +476,7 @@ main.sheet-main{max-width:1880px;padding:0 var(--sp-5) var(--sp-4)}
 .theme-row-toggle{display:inline-flex;align-items:center;gap:4px;margin-left:var(--sp-1);font-size:var(--fs-xs);color:var(--ink-2);cursor:pointer;user-select:none}
 .theme-row-toggle input{width:15px;height:15px;min-height:0;margin:0;accent-color:var(--brand)}
 
-.sheet-wrap{position:relative;overflow:auto;max-height:calc(100dvh - 220px);min-height:380px;border:1px solid var(--line-2);border-radius:var(--r-input);background:var(--surface);outline:none;-webkit-overflow-scrolling:touch}
+.sheet-wrap{position:relative;min-width:0;overflow:auto;max-height:calc(100dvh - 220px);min-height:380px;border:1px solid var(--line-2);border-radius:var(--r-input);background:var(--surface);outline:none;-webkit-overflow-scrolling:touch}
 .sheet-table{width:max-content;min-width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed}
 .sheet-table th,.sheet-table td{height:34px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:0 var(--sp-2);font-size:var(--fs-sm);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;user-select:none}
 .sheet-table thead th{position:sticky;top:0;z-index:3;width:128px;min-width:96px;background:var(--surface-2);color:var(--muted);font-weight:600;text-align:center;cursor:pointer}
@@ -528,34 +529,36 @@ main.sheet-main{max-width:1880px;padding:0 var(--sp-5) var(--sp-4)}
  .money-panel{padding:var(--sp-3)}
  .sheet-wrap{max-height:calc(100dvh - 300px)}
  .sheet-table thead th{width:96px;min-width:84px}
+ .sheet-table td .cell-editor{font-size:16px}
 }
 
-/* ── 400px 이하 모바일 최적화 ── */
+/* ── 작은 모바일: 320px에서도 컨트롤과 시트를 각각 화면 폭에 맞춘다 ── */
 @media(max-width:480px){
- main.sheet-main{padding:0 var(--sp-2) var(--sp-3);max-width:100%;overflow-x:clip}
+ main.sheet-main{padding:0 var(--sp-2) var(--sp-3);max-width:100%}
  .app-header{margin-bottom:var(--sp-2)}
  .top{gap:var(--sp-2);padding:var(--sp-2) 0}
- #saveBtn{padding:0 var(--sp-4);min-height:34px}
+ #saveBtn{padding:0 var(--sp-4);min-height:40px}
  .money-panel{margin-left:calc(-1 * var(--sp-2));margin-right:calc(-1 * var(--sp-2));border-radius:0;border-left:0;border-right:0;padding:var(--sp-2);gap:var(--sp-2)}
  .sheet-toolbar{gap:var(--sp-1)}
  .formula-bar{flex-basis:100%}
- .cell-ref{min-width:46px;height:34px;font-size:12px}
- #formulaInput{height:34px}
- .sheet-actions,.theme-bar{flex-wrap:nowrap;overflow-x:auto;max-width:100%;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding-bottom:2px}
- .sheet-actions::-webkit-scrollbar,.theme-bar::-webkit-scrollbar,.sheet-tabs::-webkit-scrollbar{display:none}
- .sheet-actions button{flex:0 0 auto;min-height:32px;padding:0 var(--sp-2);font-size:12px}
- .theme-bar{flex-wrap:nowrap;gap:6px}
+ .cell-ref{min-width:46px;height:40px;font-size:12px}
+ #formulaInput{height:40px}
+ .sheet-actions{flex-wrap:nowrap;overflow-x:auto;min-width:0;max-width:100%;scrollbar-width:thin;-webkit-overflow-scrolling:touch;padding-bottom:2px}
+ .sheet-actions button{flex:0 0 auto;min-height:40px;padding:0 var(--sp-2);font-size:13px}
+ .theme-bar{flex-wrap:wrap;gap:6px}
  .theme-label,.theme-row-toggle,.theme-clear{flex:0 0 auto}
- .theme-swatch{flex:0 0 auto}
- .sheet-wrap{max-height:calc(100dvh - 255px);min-height:280px}
- .sheet-table th,.sheet-table td{height:32px;padding:0 var(--sp-1);font-size:13px}
- .sheet-table thead th{width:80px;min-width:72px}
+ .theme-swatch{flex:0 0 auto;width:32px;min-width:32px;min-height:40px;height:40px}
+ .theme-clear,.theme-row-toggle{min-height:40px}
+ .sheet-wrap{max-height:calc(100dvh - 320px);min-height:min(240px,50dvh)}
+ .sheet-table th,.sheet-table td{height:40px;padding:0 var(--sp-2);font-size:14px}
+ .sheet-table thead th{width:112px;min-width:112px}
  .sheet-table thead th.corner-cell,.sheet-table tbody th{width:34px;min-width:34px;font-size:11px}
  .sheet-table.is-frozen-first tbody tr:first-child td,
- .sheet-table.is-frozen-first tbody tr:first-child th{top:32px}
+ .sheet-table.is-frozen-first tbody tr:first-child th{top:40px}
  .sheet-table td .cell-editor,#formulaInput{font-size:16px}
  .sheet-tabs-bar{flex-direction:column;align-items:stretch;gap:6px}
- .sheet-tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
- .sheet-tab{flex:0 0 auto}
+ .sheet-tabs{flex:initial;justify-content:flex-start;flex-wrap:nowrap;overflow-x:auto;min-width:0;scrollbar-width:thin;-webkit-overflow-scrolling:touch}
+ .sheet-tab{flex:0 0 auto;min-height:40px;font-size:13px}
  .sheet-tab-actions{justify-content:flex-end;flex-wrap:wrap}
+ .sheet-tab-actions button{min-height:40px}
 }
