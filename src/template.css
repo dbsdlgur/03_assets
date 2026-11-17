@@ -163,7 +163,9 @@ table{width:100%;border-collapse:separate;border-spacing:0}
 th{font-size:var(--fs-xs);font-weight:400;color:var(--muted);text-align:left;padding:0 var(--sp-2) var(--sp-2);border-bottom:1px solid var(--line);white-space:nowrap}
 td{padding:var(--cell-pad);border-bottom:1px solid var(--line-soft);vertical-align:middle;transition:background-color .15s ease}
 tbody tr:last-child td{border-bottom:0}
-tbody tr:hover td{background:var(--surface-2)}
+@media(hover:hover) and (pointer:fine){
+ .table-wrap tbody tr:hover td{background:var(--surface-2)}
+}
 td input,td select,td textarea{width:100%;min-width:6em;min-height:var(--h-input);padding:0 var(--sp-2);border:1px solid transparent;border-radius:var(--r-input);background:transparent;font-size:var(--fs-md);text-overflow:ellipsis;transition:border-color .15s ease,background-color .15s ease}
 td select{-webkit-appearance:none;appearance:none;padding-right:28px;background:var(--chevron) right 8px center/16px no-repeat}
 td textarea{display:block;padding:var(--sp-2);resize:vertical;overflow-wrap:anywhere;line-height:1.4}
@@ -478,7 +480,7 @@ main.sheet-main{max-width:1880px;padding:0 var(--sp-5) var(--sp-4)}
 
 .sheet-wrap{position:relative;min-width:0;overflow:auto;max-height:calc(100dvh - 220px);min-height:380px;border:1px solid var(--line-2);border-radius:var(--r-input);background:var(--surface);outline:none;-webkit-overflow-scrolling:touch}
 .sheet-table{width:max-content;min-width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed}
-.sheet-table th,.sheet-table td{height:34px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:0 var(--sp-2);font-size:var(--fs-sm);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;user-select:none}
+.sheet-table th,.sheet-table td{height:34px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:0 var(--sp-2);font-size:var(--fs-sm);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;user-select:none;transition:none}
 .sheet-table thead th{position:sticky;top:0;z-index:3;width:128px;min-width:96px;background:var(--surface-2);color:var(--muted);font-weight:600;text-align:center;cursor:pointer}
 .sheet-table thead th.corner-cell{left:0;z-index:5;width:48px;min-width:48px;cursor:default}
 .sheet-table tbody th{position:sticky;left:0;z-index:2;width:48px;min-width:48px;background:var(--surface-2);color:var(--muted);font-weight:500;text-align:center;font-variant-numeric:tabular-nums;cursor:pointer}
@@ -525,9 +527,11 @@ main.sheet-main{max-width:1880px;padding:0 var(--sp-5) var(--sp-4)}
 .sheet-tab-actions button{min-height:32px;padding:0 var(--sp-2);font-size:var(--fs-xs)}
 
 @media(max-width:640px){
+ /* 주소창이 접히는 동안 시트 높이와 반투명 헤더를 매 프레임 재합성하지 않는다. */
+ main.sheet-main .app-header{background:var(--surface);border-image:none;border-bottom:1px solid var(--line);-webkit-backdrop-filter:none;backdrop-filter:none}
  main.sheet-main{padding:0 var(--sp-2) var(--sp-4)}
  .money-panel{padding:var(--sp-3)}
- .sheet-wrap{max-height:calc(100dvh - 300px)}
+ .sheet-wrap{max-height:calc(100svh - 300px)}
  .sheet-table thead th{width:96px;min-width:84px}
  .sheet-table td .cell-editor{font-size:16px}
 }
@@ -549,7 +553,7 @@ main.sheet-main{max-width:1880px;padding:0 var(--sp-5) var(--sp-4)}
  .theme-label,.theme-row-toggle,.theme-clear{flex:0 0 auto}
  .theme-swatch{flex:0 0 auto;width:32px;min-width:32px;min-height:40px;height:40px}
  .theme-clear,.theme-row-toggle{min-height:40px}
- .sheet-wrap{max-height:calc(100dvh - 320px);min-height:min(240px,50dvh)}
+ .sheet-wrap{max-height:calc(100svh - 320px);min-height:min(240px,50svh)}
  .sheet-table th,.sheet-table td{height:40px;padding:0 var(--sp-2);font-size:14px}
  .sheet-table thead th{width:112px;min-width:112px}
  .sheet-table thead th.corner-cell,.sheet-table tbody th{width:34px;min-width:34px;font-size:11px}

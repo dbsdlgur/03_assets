@@ -214,34 +214,18 @@
   return sheetWrap.querySelector(`td[data-col="${col}"][data-row="${row}"]`);
  }
 
- function refreshDisplay() {
+ // 선택 이동은 값·수식·테마를 다시 그리지 않는다.
+ function refreshSelection() {
   const sheet = activeSheet();
   const bounds = getSelectionBounds(sheet);
   const isSingle = bounds.minCol === bounds.maxCol && bounds.minRow === bounds.maxRow;
   for (const td of sheetWrap.querySelectorAll('td[data-key]')) {
-   const key = td.dataset.key;
    const col = Number(td.dataset.col);
    const row = Number(td.dataset.row);
    const isSelected = col === selected.col && row === selected.row;
    const inRange = !isSingle && col >= bounds.minCol && col <= bounds.maxCol && row >= bounds.minRow && row <= bounds.maxRow;
    td.classList.toggle('is-selected', isSelected);
    td.classList.toggle('is-in-range', inRange && !isSelected);
-   for (const t of THEME_NAMES) td.classList.remove(`theme-${t}`);
-   const cellTheme = sheet.themes?.[key];
-   if (cellTheme) td.classList.add(`theme-${cellTheme}`);
-   if (editing && isSelected) {
-    td.classList.remove('is-negative');
-    continue;
-   }
-   const res = evaluateCell(key, sheet.cells);
-   const rawStr = String(sheet.cells[key] ?? '');
-   const isWon = sheet.formats?.[key] === 'won' || (!rawStr.startsWith('=') && rawStr.includes('₩'));
-   const displayText = res.isNumber && isWon ? formatWon(res.numeric) : res.display;
-   td.textContent = displayText;
-   td.classList.toggle('is-number', res.isNumber);
-   td.classList.toggle('is-error', Boolean(res.error));
-   td.classList.toggle('is-negative', sheet.negativeTheme !== false && res.isNumber && res.numeric < 0);
-   td.title = rawStr.startsWith('=') ? `${rawStr} → ${displayText}` : '';
   }
   for (const th of sheetWrap.querySelectorAll('thead th[data-col]')) {
    const c = Number(th.dataset.col);
@@ -255,6 +239,32 @@
   updateToolbarState(sheet);
  }
 
+ function refreshDisplay() {
+  const sheet = activeSheet();
+  for (const td of sheetWrap.querySelectorAll('td[data-key]')) {
+   const key = td.dataset.key;
+   const isSelected = Number(td.dataset.col) === selected.col && Number(td.dataset.row) === selected.row;
+   const cellTheme = sheet.themes?.[key];
+   for (const t of THEME_NAMES) td.classList.toggle(`theme-${t}`, cellTheme === t);
+   if (editing && isSelected) {
+    td.classList.remove('is-negative');
+    continue;
+   }
+   const res = evaluateCell(key, sheet.cells);
+   const rawStr = String(sheet.cells[key] ?? '');
+   const isWon = sheet.formats?.[key] === 'won' || (!rawStr.startsWith('=') && rawStr.includes('₩'));
+   const displayText = res.isNumber && isWon ? formatWon(res.numeric) : res.display;
+   // 같은 텍스트를 대입해도 텍스트 노드가 교체되므로 실제 변경 때만 갱신한다.
+   if (td.textContent !== displayText) td.textContent = displayText;
+   td.classList.toggle('is-number', res.isNumber);
+   td.classList.toggle('is-error', Boolean(res.error));
+   td.classList.toggle('is-negative', sheet.negativeTheme !== false && res.isNumber && res.numeric < 0);
+   const title = rawStr.startsWith('=') ? `${rawStr} → ${displayText}` : '';
+   if (td.title !== title) td.title = title;
+  }
+  refreshSelection();
+ }
+
  function selectCell(col, row, scrollIntoView = true, extend = false) {
   const sheet = activeSheet();
   const targetCol = nearestVisible(Math.max(0, Math.min(sheet.cols - 1, col)), sheet.cols, sheet.hiddenCols);
@@ -265,7 +275,7 @@
    selected = { col: targetCol, row: targetRow };
    selectionEnd = { col: targetCol, row: targetRow };
   }
-  refreshDisplay();
+  refreshSelection();
   if (scrollIntoView) {
    cellElement(targetCol, targetRow)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
@@ -434,7 +444,7 @@
    if (getFormulaEditor() || editing) return;
    selected = { col: visCols[0] ?? 0, row: visRows[0] ?? 0 };
    selectionEnd = { col: visCols[visCols.length - 1] ?? 0, row: visRows[visRows.length - 1] ?? 0 };
-   refreshDisplay();
+   refreshSelection();
    sheetWrap.focus({ preventScroll: true });
   });
   headRow.append(corner);
@@ -458,7 +468,7 @@
      selectionEnd = { col: c, row: visRows[visRows.length - 1] ?? 0 };
      selectionDragMode = 'cols';
     }
-    refreshDisplay();
+    refreshSelection();
     sheetWrap.focus({ preventScroll: true });
    });
    headRow.append(th);
@@ -486,7 +496,7 @@
      selectionEnd = { col: visCols[visCols.length - 1] ?? 0, row: r };
      selectionDragMode = 'rows';
     }
-    refreshDisplay();
+    refreshSelection();
     sheetWrap.focus({ preventScroll: true });
    });
    tr.append(rowTh);
@@ -711,7 +721,7 @@
    if (selectionEnd.col !== c || selectionEnd.row !== r) {
     didDragSelection = true;
     selectionEnd = { col: c, row: r };
-    refreshDisplay();
+    refreshSelection();
    }
   } else if (selectionDragMode === 'cols') {
    const cell = e.target.closest('[data-col]');
@@ -719,7 +729,7 @@
    const c = Number(cell.dataset.col);
    if (selectionEnd.col !== c) {
     selectionEnd.col = c;
-    refreshDisplay();
+    refreshSelection();
    }
   } else if (selectionDragMode === 'rows') {
    const cell = e.target.closest('[data-row]');
@@ -727,7 +737,7 @@
    const r = Number(cell.dataset.row);
    if (selectionEnd.row !== r) {
     selectionEnd.row = r;
-    refreshDisplay();
+    refreshSelection();
    }
   }
  });
