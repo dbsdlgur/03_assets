@@ -541,13 +541,28 @@
   refreshDisplay();
  }
 
+ function moveSheet(fromIdx, toIdx) {
+  const sheets = state.money.sheets;
+  if (fromIdx < 0 || toIdx < 0 || fromIdx >= sheets.length || toIdx >= sheets.length || fromIdx === toIdx) return;
+  pushUndo();
+  const [moved] = sheets.splice(fromIdx, 1);
+  sheets.splice(toIdx, 0, moved);
+  changed();
+  renderSheetTabs();
+ }
+
+ let dragSheetIdx = -1;
+
  function renderSheetTabs() {
   sheetTabsEl.textContent = '';
-  for (const sheet of state.money.sheets) {
+  const sheets = state.money.sheets;
+  const activeIdx = sheets.findIndex(s => s.id === state.money.activeSheetId);
+  sheets.forEach((sheet, idx) => {
    const btn = el('button', {
     type: 'button',
     className: 'sheet-tab',
     textContent: sheet.name,
+    draggable: true,
    });
    btn.setAttribute('role', 'tab');
    const active = sheet.id === state.money.activeSheetId;
@@ -556,13 +571,38 @@
     if (state.money.activeSheetId === sheet.id) return;
     state.money.activeSheetId = sheet.id;
     selected = { col: 0, row: 0 };
+    selectionEnd = { col: 0, row: 0 };
     changed();
     renderSheetTabs();
     renderGrid();
    });
+   btn.addEventListener('dragstart', e => {
+    dragSheetIdx = idx;
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+   });
+   btn.addEventListener('dragover', e => {
+    if (dragSheetIdx < 0 || dragSheetIdx === idx) return;
+    e.preventDefault();
+    btn.classList.add('is-drag-over');
+   });
+   btn.addEventListener('dragleave', () => {
+    btn.classList.remove('is-drag-over');
+   });
+   btn.addEventListener('drop', e => {
+    e.preventDefault();
+    btn.classList.remove('is-drag-over');
+    if (dragSheetIdx >= 0 && dragSheetIdx !== idx) moveSheet(dragSheetIdx, idx);
+    dragSheetIdx = -1;
+   });
+   btn.addEventListener('dragend', () => {
+    dragSheetIdx = -1;
+    for (const elTab of sheetTabsEl.querySelectorAll('.is-drag-over')) elTab.classList.remove('is-drag-over');
+   });
    sheetTabsEl.append(btn);
-  }
-  $('#delSheetBtn').disabled = state.money.sheets.length <= 1;
+  });
+  $('#delSheetBtn').disabled = sheets.length <= 1;
+  $('#moveSheetLeftBtn').disabled = activeIdx <= 0;
+  $('#moveSheetRightBtn').disabled = activeIdx < 0 || activeIdx >= sheets.length - 1;
  }
 
  function renderAll() {
@@ -907,6 +947,16 @@
  $('#clearCellBtn').addEventListener('click', () => {
   clearSelectedCells();
   sheetWrap.focus({ preventScroll: true });
+ });
+
+ $('#moveSheetLeftBtn').addEventListener('click', () => {
+  const idx = state.money.sheets.findIndex(s => s.id === state.money.activeSheetId);
+  if (idx > 0) moveSheet(idx, idx - 1);
+ });
+
+ $('#moveSheetRightBtn').addEventListener('click', () => {
+  const idx = state.money.sheets.findIndex(s => s.id === state.money.activeSheetId);
+  if (idx >= 0 && idx < state.money.sheets.length - 1) moveSheet(idx, idx + 1);
  });
 
  $('#addSheetBtn').addEventListener('click', () => {
