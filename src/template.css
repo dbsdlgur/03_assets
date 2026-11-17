@@ -535,6 +535,10 @@ main.sheet-main{max-width:1880px;padding:0 var(--sp-5) var(--sp-4)}
 .sheet-tab[aria-selected=true]{background:var(--brand-soft);border-color:var(--brand);color:var(--brand);font-weight:600}
 .sheet-tab-actions{display:flex;gap:var(--sp-1)}
 .sheet-tab-actions button{min-height:32px;padding:0 var(--sp-2);font-size:var(--fs-xs)}
+.sheet-action-compact{display:none}
+.sheet-view-bar{display:flex;flex:none;align-items:center;justify-content:flex-end;gap:var(--sp-1)}
+.sheet-view-bar button{min-height:28px;min-width:28px;padding:0 var(--sp-2);font-size:12px}
+#zoomResetBtn{min-width:56px;font-variant-numeric:tabular-nums}
 
 /* 모바일은 한 화면 안에서 셀 영역만 세로 스크롤한다.
    페이지·시트의 이중 스크롤과 sticky 헤더가 탭까지 다시 합성하는 것을 피한다. */
@@ -603,5 +607,10 @@ main.sheet-main{max-width:1880px;padding:0 var(--sp-5) var(--sp-4)}
  .sheet-table.is-frozen-first tbody tr:first-child th{top:24px}
  .sheet-main .sheet-tabs{flex:0 1 auto;justify-content:flex-start;gap:var(--sp-1);min-width:0;max-width:100%}
  .sheet-tabs .sheet-tab{flex:none;min-height:28px;padding:0 var(--sp-2);font-size:12px}
- .sheet-tabs-bar{gap:var(--sp-1)}
+ .sheet-tabs-bar{flex-direction:row;flex-wrap:nowrap;align-items:center;gap:var(--sp-1)}
+ .sheet-main .sheet-tabs{flex:1;flex-wrap:nowrap;overflow-x:auto}
+ .sheet-tab-actions{flex:none;flex-wrap:nowrap;gap:2px}
+ .sheet-tab-actions button{min-height:28px;min-width:24px;padding:0 5px;font-size:11px}
+ .sheet-action-full{display:none}
+ .sheet-action-compact{display:inline}
 }

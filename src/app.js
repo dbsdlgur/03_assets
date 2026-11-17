@@ -136,6 +136,58 @@
  const formulaInput = $('#formulaInput');
  const sheetTabsEl = $('#sheetTabs');
 
+ // Zoom is a viewing preference and stays available while editing is locked.
+ let sheetZoom = 1;
+ let pinch = null;
+ const clampZoom = value => Math.max(0.5, Math.min(2, Math.round(value * 100) / 100));
+ function setSheetZoom(value, point = { x: sheetWrap.clientWidth / 2, y: sheetWrap.clientHeight / 2 }, origin = null) {
+  const next = clampZoom(value);
+  const content = origin || { x: (sheetWrap.scrollLeft + point.x) / sheetZoom, y: (sheetWrap.scrollTop + point.y) / sheetZoom };
+  sheetZoom = next;
+  const table = sheetWrap.querySelector('.sheet-table');
+  if (table) table.style.zoom = String(next);
+  sheetWrap.scrollLeft = content.x * next - point.x;
+  sheetWrap.scrollTop = content.y * next - point.y;
+  $('#zoomResetBtn').textContent = `${Math.round(next * 100)}%`;
+  $('#zoomOutBtn').disabled = next <= 0.5;
+  $('#zoomInBtn').disabled = next >= 2;
+ }
+ $('#zoomOutBtn').addEventListener('click', () => setSheetZoom(sheetZoom - 0.1));
+ $('#zoomInBtn').addEventListener('click', () => setSheetZoom(sheetZoom + 0.1));
+ $('#zoomResetBtn').addEventListener('click', () => setSheetZoom(1));
+ function touchView(touches) {
+  const [a, b] = touches;
+  const rect = sheetWrap.getBoundingClientRect();
+  return {
+   distance: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY),
+   point: { x: (a.clientX + b.clientX) / 2 - rect.left - sheetWrap.clientLeft, y: (a.clientY + b.clientY) / 2 - rect.top - sheetWrap.clientTop },
+  };
+ }
+ sheetWrap.addEventListener('touchstart', e => {
+  if (e.touches.length !== 2) { pinch = null; return; }
+  const view = touchView(e.touches);
+  if (!view.distance) return;
+  e.preventDefault();
+  dragStart = null;
+  selectionDragMode = null;
+  pinch = { distance: view.distance, zoom: sheetZoom, origin: { x: (sheetWrap.scrollLeft + view.point.x) / sheetZoom, y: (sheetWrap.scrollTop + view.point.y) / sheetZoom } };
+ }, { passive: false });
+ sheetWrap.addEventListener('touchmove', e => {
+  if (!pinch || e.touches.length !== 2) return;
+  e.preventDefault();
+  const view = touchView(e.touches);
+  setSheetZoom(pinch.zoom * view.distance / pinch.distance, view.point, pinch.origin);
+ }, { passive: false });
+ const endPinch = () => { pinch = null; };
+ sheetWrap.addEventListener('touchend', endPinch);
+ sheetWrap.addEventListener('touchcancel', endPinch);
+ sheetWrap.addEventListener('wheel', e => {
+  if (!e.ctrlKey) return;
+  e.preventDefault();
+  const rect = sheetWrap.getBoundingClientRect();
+  setSheetZoom(sheetZoom * Math.exp(-e.deltaY * 0.01), { x: e.clientX - rect.left - sheetWrap.clientLeft, y: e.clientY - rect.top - sheetWrap.clientTop });
+ }, { passive: false });
+
  function setEditLocked(locked) {
   // Finish an in-progress edit before entering read-only mode.
   activeEditor?.blur();
@@ -471,6 +523,7 @@
   const visRows = visibleIndices(sheet.rows, sheet.hiddenRows);
 
   const table = el('table', { className: 'sheet-table' });
+  table.style.zoom = String(sheetZoom);
   if (sheet.freezeFirstRow) table.classList.add('is-frozen-first');
 
   const thead = el('thead');

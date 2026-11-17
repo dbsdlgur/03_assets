@@ -62,15 +62,21 @@
     </div>
    </div>
   </div>
+  <div class="sheet-view-bar" role="toolbar" aria-label="시트 확대 및 축소">
+   <span class="sheet-action-label">확대·축소</span>
+   <button id="zoomOutBtn" type="button" aria-label="시트 축소" title="시트 축소">−</button>
+   <button id="zoomResetBtn" type="button" aria-label="시트 배율 100%로 초기화" title="100%로 초기화">100%</button>
+   <button id="zoomInBtn" type="button" aria-label="시트 확대" title="시트 확대">+</button>
+  </div>
   <div id="sheetWrap" class="sheet-wrap" tabindex="0" aria-label="Money 스프레드시트"></div>
   <div class="sheet-tabs-bar">
    <div id="sheetTabs" class="sheet-tabs" role="tablist" aria-label="시트 목록"></div>
    <div id="sheetTabActions" class="sheet-tab-actions">
     <button id="moveSheetLeftBtn" type="button" title="현재 시트 왼쪽으로 이동" aria-label="시트 왼쪽으로 이동">◀</button>
     <button id="moveSheetRightBtn" type="button" title="현재 시트 오른쪽으로 이동" aria-label="시트 오른쪽으로 이동">▶</button>
-    <button id="addSheetBtn" type="button" title="새 시트 추가">+ 시트</button>
-    <button id="renameSheetBtn" type="button" title="현재 시트 이름 변경">이름 변경</button>
-    <button id="delSheetBtn" type="button" class="danger" title="현재 시트 삭제">시트 삭제</button>
+    <button id="addSheetBtn" type="button" title="새 시트 추가" aria-label="+ 시트"><span class="sheet-action-full">+ 시트</span><span class="sheet-action-compact" aria-hidden="true">+</span></button>
+    <button id="renameSheetBtn" type="button" title="현재 시트 이름 변경" aria-label="이름 변경"><span class="sheet-action-full">이름 변경</span><span class="sheet-action-compact" aria-hidden="true">이름</span></button>
+    <button id="delSheetBtn" type="button" class="danger" title="현재 시트 삭제" aria-label="시트 삭제"><span class="sheet-action-full">시트 삭제</span><span class="sheet-action-compact" aria-hidden="true">삭제</span></button>
    </div>
   </div>
  </section>
