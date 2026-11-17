@@ -34,11 +34,6 @@
  </header>
  <section role="tabpanel" id="panel-money" aria-labelledby="tab-money" class="money-panel">
   <div id="sheetToolbar" class="sheet-toolbar">
-   <div class="formula-bar">
-    <span id="cellRef" class="cell-ref" aria-label="선택된 셀">A1</span>
-    <span class="fx-label" aria-hidden="true">fx</span>
-    <input id="formulaInput" type="text" autocomplete="off" spellcheck="false" aria-label="셀 수식 또는 값" placeholder="값 또는 수식 입력 (예: =A1+B1, =SUM(A1:A5))">
-   </div>
    <div class="sheet-actions" role="toolbar" aria-label="행·열 편집">
     <div class="sheet-action-group" role="group" aria-label="행 편집">
      <span class="sheet-action-label">행</span>
@@ -70,6 +65,11 @@
      <button type="button" id="clearThemeBtn" class="theme-clear" title="테마 지우기">해제</button>
     </div>
    </div>
+   <div class="formula-bar">
+    <span id="cellRef" class="cell-ref" aria-label="선택된 셀">A1</span>
+    <span class="fx-label" aria-hidden="true">fx</span>
+    <div class="formula-input-wrap"><input id="formulaInput" type="text" autocomplete="off" spellcheck="false" aria-label="셀 수식 또는 값" placeholder="값 또는 수식 입력 (예: =A1+B1, =SUM(A1:A5))"></div>
+   </div>
   </div>
   <div id="sheetWrap" class="sheet-wrap" tabindex="0" aria-label="Money 스프레드시트"></div>
   <div class="sheet-tabs-bar">
@@ -78,7 +78,7 @@
     <button id="moveSheetLeftBtn" type="button" title="현재 시트 왼쪽으로 이동" aria-label="시트 왼쪽으로 이동">◀</button>
     <button id="moveSheetRightBtn" type="button" title="현재 시트 오른쪽으로 이동" aria-label="시트 오른쪽으로 이동">▶</button>
     <button id="addSheetBtn" type="button" title="새 시트 추가" aria-label="+ 시트"><span class="sheet-action-full">+ 시트</span><span class="sheet-action-compact" aria-hidden="true">+</span></button>
-    <button id="renameSheetBtn" type="button" title="현재 시트 이름 변경" aria-label="이름 변경"><span class="sheet-action-full">이름 변경</span><span class="sheet-action-compact" aria-hidden="true">이름</span></button>
+    <button id="renameSheetBtn" type="button" title="현재 시트 제목 변경" aria-label="시트 제목 변경"><span class="sheet-action-full">제목</span><span class="sheet-action-compact" aria-hidden="true">제목</span></button>
     <button id="delSheetBtn" type="button" class="danger" title="현재 시트 삭제" aria-label="시트 삭제"><span class="sheet-action-full">시트 삭제</span><span class="sheet-action-compact" aria-hidden="true">삭제</span></button>
    </div>
   </div>

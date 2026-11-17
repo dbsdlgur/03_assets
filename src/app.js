@@ -1096,7 +1096,7 @@
  $('#renameSheetBtn').addEventListener('click', () => {
   if (isLocked) return;
   const sheet = activeSheet();
-  const name = prompt('시트 이름을 입력하세요.', sheet.name);
+  const name = prompt('시트 제목을 입력하세요.', sheet.name);
   if (!name || !name.trim() || name.trim() === sheet.name) return;
   pushUndo();
   sheet.name = name.trim();
