@@ -488,6 +488,8 @@ main.sheet-main{max-width:none;height:100dvh;display:flex;flex-direction:column;
 .theme-swatch.theme-green{background:#92d050}
 .theme-swatch.theme-lightgreen{background:#e2f0d9}
 .theme-swatch.theme-amber{background:#ffc000}
+.theme-swatch.theme-sky{background:#d8e7ed}
+.theme-swatch.theme-lightyellow{background:#f8eca5}
 .theme-swatch.theme-gray{background:#d9d9d9}
 .theme-clear{min-height:28px;padding:0 var(--sp-2);font-size:var(--fs-xs)}
 
@@ -502,6 +504,8 @@ main.sheet-main{max-width:none;height:100dvh;display:flex;flex-direction:column;
 .sheet-table td.theme-green{background:#92d050;color:#111;font-weight:500}
 .sheet-table td.theme-lightgreen{background:#e2f0d9;color:#111}
 .sheet-table td.theme-amber{background:#ffc000;color:#111;font-weight:500}
+.sheet-table td.theme-sky{background:#d8e7ed;color:#111}
+.sheet-table td.theme-lightyellow{background:#f8eca5;color:#111}
 .sheet-table td.theme-blue{background:#dce6f1;color:#111}
 .sheet-table td.theme-gray{background:#d9d9d9;color:#111;font-weight:500}
 .sheet-table td.theme-red{background:#e5534b;color:#fff;font-weight:500}
@@ -510,7 +514,7 @@ main.sheet-main{max-width:none;height:100dvh;display:flex;flex-direction:column;
 .sheet-table td.is-number{text-align:right;font-variant-numeric:tabular-nums}
 .sheet-table td.is-error{color:var(--danger);font-weight:600;text-align:center}
 .sheet-table td.is-selected{outline:2px solid var(--brand);outline-offset:-2px;z-index:1;position:relative}
-.sheet-table td.is-selected:not(.theme-green):not(.theme-lightgreen):not(.theme-amber):not(.theme-blue):not(.theme-gray):not(.theme-red):not(.theme-navy):not(.is-negative){background:var(--brand-soft)}
+.sheet-table td.is-selected:not(.theme-green):not(.theme-lightgreen):not(.theme-amber):not(.theme-sky):not(.theme-lightyellow):not(.theme-blue):not(.theme-gray):not(.theme-red):not(.theme-navy):not(.is-negative){background:var(--brand-soft)}
 .sheet-table td.is-in-range{box-shadow:inset 0 0 0 999px rgba(0,117,222,.14)}
 .sheet-table td.is-ref-highlight{outline:2px dashed var(--success);outline-offset:-2px;background:rgba(26,127,55,.08)}
 .sheet-table td.is-editing{padding:0;background:var(--surface)}

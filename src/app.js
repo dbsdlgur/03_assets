@@ -13,7 +13,7 @@
  const el = (tag, props = {}) => Object.assign(document.createElement(tag), props);
  const changed = () => parent.vaultHost?.changed();
 
- const THEME_NAMES = ['green', 'lightgreen', 'amber', 'blue', 'gray', 'red', 'navy'];
+ const THEME_NAMES = ['green', 'lightgreen', 'amber', 'sky', 'lightyellow', 'blue', 'gray', 'red', 'navy'];
 
   function defaultSheet(name = 'Money') {
   return {
