@@ -517,10 +517,20 @@
  let cellClickEditReady = false;
  let didDragSelection = false;
 
+ function commitEditorsBeforeSelection() {
+  activeEditor?.blur();
+  if (document.activeElement === formulaInput) formulaInput.blur();
+ }
+
  function renderGrid() {
   const sheet = activeSheet();
   clampSelection(sheet);
   editing = false;
+  activeEditor = null;
+  dragStart = null;
+  selectionDragMode = null;
+  cellClickEditReady = false;
+  didDragSelection = false;
 
   const visCols = visibleIndices(sheet.cols, sheet.hiddenCols);
   const visRows = visibleIndices(sheet.rows, sheet.hiddenRows);
@@ -550,8 +560,9 @@
    if (hiddenBefore) th.classList.add('has-hidden-col-before');
    if (hiddenAfter) th.classList.add('has-hidden-col-after');
    th.addEventListener('mousedown', e => {
-    if (e.button !== 0 || getFormulaEditor() || editing) return;
+    if (e.button !== 0 || getFormulaEditor()) return;
     e.preventDefault();
+    commitEditorsBeforeSelection();
     if (e.shiftKey) {
      selected.row = visRows[0] ?? 0;
      selectionEnd = { col: c, row: visRows[visRows.length - 1] ?? 0 };
@@ -578,8 +589,9 @@
    const rowTh = el('th', { textContent: String(r + 1) });
    rowTh.dataset.row = String(r);
    rowTh.addEventListener('mousedown', e => {
-    if (e.button !== 0 || getFormulaEditor() || editing) return;
+    if (e.button !== 0 || getFormulaEditor()) return;
     e.preventDefault();
+    commitEditorsBeforeSelection();
     if (e.shiftKey) {
      selected.col = visCols[0] ?? 0;
      selectionEnd = { col: visCols[visCols.length - 1] ?? 0, row: r };
@@ -604,6 +616,8 @@
     if (ci === visCols.length - 1 && c < sheet.cols - 1) td.classList.add('has-hidden-col-after');
     td.addEventListener('mousedown', e => {
      if (e.button !== 0) return;
+     // 입력칸 자체를 누르면 선택을 바꾸지 않고 커서만 이동한다.
+     if (e.target === activeEditor) return;
      const editor = getFormulaEditor();
      if (editor) {
       e.preventDefault();
@@ -611,7 +625,8 @@
       applyPointedRef(editor, dragStart, dragStart);
       return;
      }
-     if (editing) return;
+     // Commit against the old selection before changing the selected cell.
+     commitEditorsBeforeSelection();
      didDragSelection = false;
      cellClickEditReady = !e.shiftKey && selected.col === c && selected.row === r && selectionEnd.col === c && selectionEnd.row === r;
      if (!cellClickEditReady) {
