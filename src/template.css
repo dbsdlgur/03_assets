@@ -500,6 +500,10 @@ main.sheet-main{max-width:none;height:100dvh;display:flex;flex-direction:column;
 .sheet-table thead th.corner-cell{left:0;z-index:5;width:48px;min-width:48px;cursor:default}
 .sheet-table tbody th{position:sticky;left:0;z-index:2;width:48px;min-width:48px;background:var(--surface-2);color:var(--muted);font-weight:500;text-align:center;font-variant-numeric:tabular-nums;cursor:pointer}
 .sheet-table th.is-active-header{background:var(--brand-soft);color:var(--brand)}
+.sheet-table th.is-axis-movable{cursor:grab;touch-action:none;padding-left:8px}
+.sheet-table th.is-axis-movable::before{content:'⠿';position:absolute;left:1px;top:50%;transform:translateY(-50%);font-size:9px;line-height:1;pointer-events:none}
+.sheet-wrap.is-axis-moving,.sheet-wrap.is-axis-moving th{cursor:grabbing}
+.axis-drop-marker{position:absolute;background:var(--brand);z-index:10;pointer-events:none}
 .sheet-table td{background:var(--surface);color:var(--ink);cursor:cell;vertical-align:middle}
 .sheet-table td.theme-green{background:#92d050;color:#111;font-weight:500}
 .sheet-table td.theme-lightgreen{background:#e2f0d9;color:#111}

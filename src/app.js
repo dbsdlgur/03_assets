@@ -11,6 +11,7 @@
   deleteRow,
   insertCol,
   deleteCol,
+  moveSheetAxis,
  } = window.VaultPure;
 
  const $ = sel => document.querySelector(sel);
@@ -148,6 +149,123 @@
  const cellRefEl = $('#cellRef');
  const formulaInput = $('#formulaInput');
  const sheetTabsEl = $('#sheetTabs');
+ let axisMove = null;
+ let axisMoveFrame = null;
+ let axisDropMarker = null;
+
+ function cancelAxisMove() {
+  const pointerId = axisMove?.pointerId;
+  axisMove = null;
+  if (axisMoveFrame !== null) cancelAnimationFrame(axisMoveFrame);
+  axisMoveFrame = null;
+  axisDropMarker?.remove();
+  axisDropMarker = null;
+  sheetWrap.classList.remove('is-axis-moving');
+  if (pointerId !== undefined && sheetWrap.hasPointerCapture(pointerId)) sheetWrap.releasePointerCapture(pointerId);
+ }
+
+ function updateAxisDrop() {
+  if (!axisMove?.active) return;
+  const rect = sheetWrap.getBoundingClientRect();
+  const head = sheetWrap.querySelector('thead th[data-col]')?.getBoundingClientRect();
+  const side = sheetWrap.querySelector('tbody th[data-row]')?.getBoundingClientRect();
+  if (!head || !side) return;
+  const rows = axisMove.axis === 'rows';
+  const x = rows ? side.left + side.width / 2 : Math.max(side.right + 1, Math.min(rect.left + sheetWrap.clientLeft + sheetWrap.clientWidth - 1, axisMove.x));
+  const y = rows ? Math.max(head.bottom + 1, Math.min(rect.top + sheetWrap.clientTop + sheetWrap.clientHeight - 1, axisMove.y)) : head.top + head.height / 2;
+  const target = document.elementFromPoint(x, y)?.closest(rows ? 'th[data-row]' : 'th[data-col]');
+  if (!target || !sheetWrap.contains(target)) return;
+  const hit = target.getBoundingClientRect();
+  const after = rows ? y >= hit.top + hit.height / 2 : x >= hit.left + hit.width / 2;
+  axisMove.before = Number(rows ? target.dataset.row : target.dataset.col) + (after ? 1 : 0);
+  if (!axisDropMarker) {
+   axisDropMarker = el('div', { className: 'axis-drop-marker' });
+   axisDropMarker.setAttribute('aria-hidden', 'true');
+   sheetWrap.append(axisDropMarker);
+  }
+  axisDropMarker.classList.toggle('is-column', !rows);
+  const scroll = rows ? sheetWrap.scrollTop : sheetWrap.scrollLeft;
+  const viewportSize = rows ? sheetWrap.clientHeight : sheetWrap.clientWidth;
+  const boundary = rows
+   ? (after ? hit.bottom : hit.top) - rect.top - sheetWrap.clientTop + scroll
+   : (after ? hit.right : hit.left) - rect.left - sheetWrap.clientLeft + scroll;
+  const offset = Math.max(scroll, Math.min(scroll + viewportSize - 2, boundary));
+  Object.assign(axisDropMarker.style, rows ? {
+   left: `${sheetWrap.scrollLeft}px`, top: `${offset}px`, width: `${sheetWrap.clientWidth}px`, height: '2px',
+  } : {
+   left: `${offset}px`, top: `${sheetWrap.scrollTop}px`, width: '2px', height: `${sheetWrap.clientHeight}px`,
+  });
+ }
+
+ function scrollAxisMove() {
+  axisMoveFrame = null;
+  if (!axisMove?.active) return;
+  const rect = sheetWrap.getBoundingClientRect();
+  const rows = axisMove.axis === 'rows';
+  const point = rows ? axisMove.y : axisMove.x;
+  const min = rows ? rect.top : rect.left;
+  const max = rows ? rect.bottom : rect.right;
+  const delta = point < min + 36 ? -16 : point > max - 28 ? 16 : 0;
+  const key = rows ? 'scrollTop' : 'scrollLeft';
+  const previous = sheetWrap[key];
+  sheetWrap[key] += delta;
+  if (sheetWrap[key] !== previous) {
+   updateAxisDrop();
+   axisMoveFrame = requestAnimationFrame(scrollAxisMove);
+  }
+ }
+
+ sheetWrap.addEventListener('pointerdown', e => {
+  if (isLocked || !e.isPrimary || e.button !== 0 || e.shiftKey || getFormulaEditor()) return;
+  const header = e.target.closest('th.is-axis-movable');
+  if (!header) return;
+  e.preventDefault();
+  e.stopPropagation();
+  commitEditorsBeforeSelection();
+  const bounds = getSelectionBounds(activeSheet());
+  const rows = header.dataset.row !== undefined;
+  axisMove = { axis: rows ? 'rows' : 'cols', start: rows ? bounds.minRow : bounds.minCol, end: rows ? bounds.maxRow : bounds.maxCol, pointerId: e.pointerId, x: e.clientX, y: e.clientY, originX: e.clientX, originY: e.clientY, active: false, before: null };
+  selectionDragMode = null;
+  sheetWrap.setPointerCapture(e.pointerId);
+ }, true);
+ sheetWrap.addEventListener('pointermove', e => {
+  if (!axisMove || e.pointerId !== axisMove.pointerId) return;
+  axisMove.x = e.clientX;
+  axisMove.y = e.clientY;
+  if (!axisMove.active && Math.hypot(e.clientX - axisMove.originX, e.clientY - axisMove.originY) < 5) return;
+  axisMove.active = true;
+  e.preventDefault();
+  sheetWrap.classList.add('is-axis-moving');
+  updateAxisDrop();
+  if (axisMoveFrame === null) axisMoveFrame = requestAnimationFrame(scrollAxisMove);
+ });
+ sheetWrap.addEventListener('pointerup', e => {
+  if (!axisMove || e.pointerId !== axisMove.pointerId) return;
+  axisMove.x = e.clientX;
+  axisMove.y = e.clientY;
+  updateAxisDrop();
+  const move = axisMove;
+  const rect = sheetWrap.getBoundingClientRect();
+  const inside = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+  cancelAxisMove();
+  if (!inside || !move.active || move.before === null || isLocked) return;
+  const sheet = activeSheet();
+  const result = moveSheetAxis(sheet, move.axis, move.start, move.end, move.before);
+  if (!result) return;
+  pushUndo();
+  Object.assign(sheet, result.sheet);
+  const rows = visibleIndices(sheet.rows, sheet.hiddenRows), cols = visibleIndices(sheet.cols, sheet.hiddenCols);
+  selected = move.axis === 'rows' ? { col: cols[0], row: result.start } : { col: result.start, row: rows[0] };
+  selectionEnd = move.axis === 'rows' ? { col: cols.at(-1), row: result.end } : { col: result.end, row: rows.at(-1) };
+  changed();
+  renderGrid();
+  sheetWrap.focus({ preventScroll: true });
+ });
+ sheetWrap.addEventListener('pointercancel', cancelAxisMove);
+ sheetWrap.addEventListener('lostpointercapture', cancelAxisMove);
+ window.addEventListener('keydown', e => {
+  if (axisMove && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancelAxisMove(); }
+ }, true);
 
  // Zoom is a viewing preference and stays available while editing is locked.
  let sheetZoom = 1;
@@ -178,6 +296,7 @@
  }
  sheetWrap.addEventListener('touchstart', e => {
   if (e.touches.length !== 2) { pinch = null; return; }
+  cancelAxisMove();
   const view = touchView(e.touches);
   if (!view.distance) return;
   e.preventDefault();
@@ -202,6 +321,7 @@
  }, { passive: false });
 
  function setEditLocked(locked, notify = true) {
+  cancelAxisMove();
   // Finish an in-progress edit before entering read-only mode.
   activeEditor?.blur();
   if (document.activeElement === formulaInput) formulaInput.blur();
@@ -331,6 +451,9 @@
   const sheet = activeSheet();
   const bounds = getSelectionBounds(sheet);
   const isSingle = bounds.minCol === bounds.maxCol && bounds.minRow === bounds.maxRow;
+  const visibleRows = visibleIndices(sheet.rows, sheet.hiddenRows), visibleCols = visibleIndices(sheet.cols, sheet.hiddenCols);
+  const wholeRows = bounds.minCol === visibleCols[0] && bounds.maxCol === visibleCols.at(-1);
+  const wholeCols = bounds.minRow === visibleRows[0] && bounds.maxRow === visibleRows.at(-1);
   for (const td of sheetWrap.querySelectorAll('td[data-key]')) {
    const col = Number(td.dataset.col);
    const row = Number(td.dataset.row);
@@ -342,10 +465,16 @@
   for (const th of sheetWrap.querySelectorAll('thead th[data-col]')) {
    const c = Number(th.dataset.col);
    th.classList.toggle('is-active-header', c >= bounds.minCol && c <= bounds.maxCol);
+   const movable = !isLocked && wholeCols && c >= bounds.minCol && c <= bounds.maxCol;
+   th.classList.toggle('is-axis-movable', movable);
+   th.title = movable ? '선택한 열을 끌어 이동' : '열 선택';
   }
   for (const th of sheetWrap.querySelectorAll('tbody th[data-row]')) {
    const r = Number(th.dataset.row);
    th.classList.toggle('is-active-header', r >= bounds.minRow && r <= bounds.maxRow);
+   const movable = !isLocked && wholeRows && r >= bounds.minRow && r <= bounds.maxRow;
+   th.classList.toggle('is-axis-movable', movable);
+   th.title = movable ? '선택한 행을 끌어 이동' : '행 선택';
   }
   updateFormulaBar();
   updateToolbarState(sheet);
@@ -576,6 +705,7 @@
  }
 
  function renderGrid() {
+  cancelAxisMove();
   const sheet = activeSheet();
   clampSelection(sheet);
   editing = false;

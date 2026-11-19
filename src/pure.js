@@ -334,6 +334,67 @@
   return next;
  }
 
+ // before is an insertion boundary in the original order (0..total).
+ function moveSheetAxis(sheet, axis, start, end, before) {
+  const rows = axis === 'rows';
+  const total = rows ? sheet.rows : sheet.cols;
+  if (!['rows', 'cols'].includes(axis) || ![start, end, before].every(Number.isInteger) || start < 0 || end < start || end >= total || before < 0 || before > total) return null;
+  if (before >= start && before <= end + 1) return null;
+  const order = Array.from({ length: total }, (_, i) => i);
+  const block = order.splice(start, end - start + 1);
+  const destination = before > end ? before - block.length : before;
+  order.splice(destination, 0, ...block);
+  const positions = new Map(order.map((original, index) => [original, index]));
+  const movedIndex = index => positions.get(index) ?? index;
+  const movedRef = ref => formatCellRef(rows ? ref.col : movedIndex(ref.col), rows ? movedIndex(ref.row) : ref.row);
+
+  function moveFormula(value) {
+   if (typeof value !== 'string' || !value.startsWith('=')) return value;
+   return '=' + value.slice(1).replace(/\b([A-Za-z]+[1-9]\d*)(?:\s*:\s*([A-Za-z]+[1-9]\d*))?\b(?!\s*\()/g, (match, first, last) => {
+    const a = parseCellRef(first);
+    if (!last) return movedRef(a);
+    const b = parseCellRef(last);
+    const lo = Math.min(rows ? a.row : a.col, rows ? b.row : b.col);
+    const hi = Math.max(rows ? a.row : a.col, rows ? b.row : b.col);
+    // Only the reordered axis can change membership. Keep out-of-sheet tails intact.
+    const mapped = [];
+    for (let i = lo; i <= Math.min(hi, total - 1); i++) mapped.push(movedIndex(i));
+    mapped.sort((x, y) => x - y);
+    const groups = [];
+    for (const index of mapped) {
+     const group = groups.at(-1);
+     if (group && index === group[1] + 1) group[1] = index;
+     else groups.push([index, index]);
+    }
+    if (hi >= total) {
+     const tail = Math.max(lo, total);
+     const group = groups.at(-1);
+     if (group && tail === group[1] + 1) group[1] = hi;
+     else groups.push([tail, hi]);
+    }
+    const crossLo = Math.min(rows ? a.col : a.row, rows ? b.col : b.row);
+    const crossHi = Math.max(rows ? a.col : a.row, rows ? b.col : b.row);
+    return groups.map(([from, to]) => {
+     const firstKey = rows ? formatCellRef(crossLo, from) : formatCellRef(from, crossLo);
+     const lastKey = rows ? formatCellRef(crossHi, to) : formatCellRef(to, crossHi);
+     return firstKey === lastKey ? firstKey : `${firstKey}:${lastKey}`;
+    }).join(',');
+   });
+  }
+
+  const next = { ...sheet };
+  for (const field of ['cells', 'themes', 'formats', 'alignments']) {
+   next[field] = {};
+   for (const [key, value] of Object.entries(sheet[field] || {})) {
+    const ref = parseCellRef(key);
+    if (ref) next[field][movedRef(ref)] = field === 'cells' ? moveFormula(value) : value;
+   }
+  }
+  const hidden = rows ? 'hiddenRows' : 'hiddenCols';
+  next[hidden] = (sheet[hidden] || []).map(movedIndex).sort((a, b) => a - b);
+  return { sheet: next, start: destination, end: destination + block.length - 1 };
+ }
+
  root.VaultPure = {
   indexToCol,
   colToIndex,
@@ -349,5 +410,6 @@
   deleteRow,
   insertCol,
   deleteCol,
+  moveSheetAxis,
  };
 })(typeof window !== 'undefined' ? window : globalThis);
