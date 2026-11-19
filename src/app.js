@@ -29,6 +29,7 @@
    cells: {},
    themes: {},
    formats: {},
+   alignments: {},
    hiddenRows: [],
    hiddenCols: [],
    freezeFirstRow: false,
@@ -60,6 +61,12 @@
         if (v === 'won') formats[k] = 'won';
        }
       }
+      const alignments = {};
+      if (sh?.alignments && typeof sh.alignments === 'object') {
+       for (const [k, v] of Object.entries(sh.alignments)) {
+        if (v === 'center') alignments[k] = v;
+       }
+      }
       return {
        id: typeof sh?.id === 'string' && sh.id ? sh.id : newId(),
        name: typeof sh?.name === 'string' && sh.name.trim() ? sh.name.trim() : `Sheet ${i + 1}`,
@@ -68,6 +75,7 @@
        cells: sh?.cells && typeof sh.cells === 'object' ? { ...sh.cells } : {},
        themes,
        formats,
+       alignments,
        hiddenRows,
        hiddenCols,
        freezeFirstRow: Boolean(sh?.freezeFirstRow),
@@ -304,6 +312,14 @@
   $('#negThemeBtn').setAttribute('aria-pressed', String(sheet.negativeTheme !== false));
   const activeKey = formatCellRef(selected.col, selected.row);
   $('#wonBtn').setAttribute('aria-pressed', String(sheet.formats?.[activeKey] === 'won'));
+  const bounds = getSelectionBounds(sheet);
+  let allCentered = true;
+  for (let r = bounds.minRow; r <= bounds.maxRow && allCentered; r++) {
+   for (let c = bounds.minCol; c <= bounds.maxCol; c++) {
+    if (sheet.alignments?.[formatCellRef(c, r)] !== 'center') { allCentered = false; break; }
+   }
+  }
+  $('#centerAlignBtn').setAttribute('aria-pressed', String(allCentered));
  }
 
  function cellElement(col, row) {
@@ -365,6 +381,7 @@
   for (const td of sheetWrap.querySelectorAll('td[data-key]')) {
    const key = td.dataset.key;
    const isSelected = Number(td.dataset.col) === selected.col && Number(td.dataset.row) === selected.row;
+   td.classList.toggle('is-centered', sheet.alignments?.[key] === 'center');
    const cellTheme = sheet.themes?.[key];
    for (const t of THEME_NAMES) td.classList.toggle(`theme-${t}`, cellTheme === t);
    if (editing && isSelected) {
@@ -971,6 +988,7 @@
   sheet.cells = insertRow(sheet.cells, atRow);
   sheet.themes = insertRow(sheet.themes, atRow);
   sheet.formats = insertRow(sheet.formats, atRow);
+  sheet.alignments = insertRow(sheet.alignments, atRow);
   sheet.hiddenRows = sheet.hiddenRows.map(r => r >= atRow ? r + 1 : r);
   sheet.rows += 1;
   changed();
@@ -986,6 +1004,7 @@
   sheet.cells = insertCol(sheet.cells, atCol);
   sheet.themes = insertCol(sheet.themes, atCol);
   sheet.formats = insertCol(sheet.formats, atCol);
+  sheet.alignments = insertCol(sheet.alignments, atCol);
   sheet.hiddenCols = sheet.hiddenCols.map(c => c >= atCol ? c + 1 : c);
   sheet.cols += 1;
   changed();
@@ -1001,6 +1020,7 @@
   sheet.cells = deleteRow(sheet.cells, selected.row);
   sheet.themes = deleteRow(sheet.themes, selected.row);
   sheet.formats = deleteRow(sheet.formats, selected.row);
+  sheet.alignments = deleteRow(sheet.alignments, selected.row);
   sheet.hiddenRows = sheet.hiddenRows.filter(r => r !== selected.row).map(r => (r > selected.row ? r - 1 : r));
   sheet.rows -= 1;
   clampSelection(sheet);
@@ -1016,6 +1036,7 @@
   sheet.cells = deleteCol(sheet.cells, selected.col);
   sheet.themes = deleteCol(sheet.themes, selected.col);
   sheet.formats = deleteCol(sheet.formats, selected.col);
+  sheet.alignments = deleteCol(sheet.alignments, selected.col);
   sheet.hiddenCols = sheet.hiddenCols.filter(c => c !== selected.col).map(c => (c > selected.col ? c - 1 : c));
   sheet.cols -= 1;
   clampSelection(sheet);
@@ -1101,6 +1122,24 @@
     const k = formatCellRef(c, r);
     if (allWon) delete sheet.formats[k];
     else sheet.formats[k] = 'won';
+   }
+  }
+  changed();
+  refreshDisplay();
+  sheetWrap.focus({ preventScroll: true });
+ });
+
+ $('#centerAlignBtn').addEventListener('click', () => {
+  if (isLocked) return;
+  const sheet = activeSheet();
+  const bounds = getSelectionBounds(sheet);
+  const allCentered = $('#centerAlignBtn').getAttribute('aria-pressed') === 'true';
+  pushUndo();
+  for (let r = bounds.minRow; r <= bounds.maxRow; r++) {
+   for (let c = bounds.minCol; c <= bounds.maxCol; c++) {
+    const key = formatCellRef(c, r);
+    if (allCentered) delete sheet.alignments[key];
+    else sheet.alignments[key] = 'center';
    }
   }
   changed();

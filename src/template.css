@@ -512,6 +512,7 @@ main.sheet-main{max-width:none;height:100dvh;display:flex;flex-direction:column;
 .sheet-table td.theme-navy{background:#1e3a8a;color:#fff;font-weight:500}
 .sheet-table td.is-negative{background:#ffc7ce;color:#9c0006;font-weight:500}
 .sheet-table td.is-number{text-align:right;font-variant-numeric:tabular-nums}
+.sheet-table td.is-centered,.sheet-table td.is-centered .cell-editor{text-align:center}
 .sheet-table td.is-error{color:var(--danger);font-weight:600;text-align:center}
 .sheet-table td.is-selected{outline:2px solid var(--brand);outline-offset:-2px;z-index:1;position:relative}
 .sheet-table td.is-selected:not(.theme-green):not(.theme-lightgreen):not(.theme-amber):not(.theme-sky):not(.theme-lightyellow):not(.theme-blue):not(.theme-gray):not(.theme-red):not(.theme-navy):not(.is-negative){background:var(--brand-soft)}
