@@ -120,6 +120,28 @@
   return tokens;
  }
 
+ function formulaReferences(formula) {
+  if (typeof formula !== 'string' || !formula.startsWith('=')) return [];
+  let tokens;
+  try { tokens = tokenize(formula.slice(1)); }
+  catch { return []; }
+  const references = [];
+  for (let i = 0; i < tokens.length; i++) {
+   if (tokens[i].type !== 'REF') continue;
+   const start = parseCellRef(tokens[i].value);
+   let end = start;
+   if (tokens[i + 1]?.type === ':' && tokens[i + 2]?.type === 'REF') {
+    end = parseCellRef(tokens[i + 2].value);
+    i += 2;
+   }
+   references.push({
+    minCol: Math.min(start.col, end.col), maxCol: Math.max(start.col, end.col),
+    minRow: Math.min(start.row, end.row), maxRow: Math.max(start.row, end.row),
+   });
+  }
+  return references;
+ }
+
  function evaluateCell(key, cells, visiting = new Set()) {
   const raw = cells?.[key];
   if (raw === undefined || raw === null || raw === '') {
@@ -320,6 +342,7 @@
   formatNumber,
   formatWon,
   evaluateCell,
+  formulaReferences,
   insertRow,
   deleteRow,
   insertCol,

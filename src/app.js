@@ -4,7 +4,11 @@
   formatCellRef,
   formatWon,
   evaluateCell,
+  parseCellRef,
+  formulaReferences,
+  insertRow,
   deleteRow,
+  insertCol,
   deleteCol,
  } = window.VaultPure;
 
@@ -328,6 +332,31 @@
   }
   updateFormulaBar();
   updateToolbarState(sheet);
+  updateFormulaReferences();
+ }
+
+ function updateFormulaReferences(draft = null) {
+  const sheet = activeSheet();
+  const bounds = getSelectionBounds(sheet);
+  const editor = activeEditor || (document.activeElement === formulaInput ? formulaInput : null);
+  let references = [];
+  if (draft !== null || editor) {
+   references = formulaReferences(draft ?? editor.value);
+  } else {
+   // 행·범위 선택 시 그 안의 수식들이 직접 참조하는 셀을 함께 표시한다.
+   for (const [key, value] of Object.entries(sheet.cells)) {
+    if (typeof value !== 'string' || !value.startsWith('=')) continue;
+    const cell = parseCellRef(key);
+    if (cell && cell.col >= bounds.minCol && cell.col <= bounds.maxCol && cell.row >= bounds.minRow && cell.row <= bounds.maxRow) {
+     references.push(...formulaReferences(value));
+    }
+   }
+  }
+  // 보이는 셀만 검사하므로 아주 큰 범위를 참조해도 범위 전체를 생성하지 않는다.
+  for (const td of sheetWrap.querySelectorAll('td[data-key]')) {
+   const col = Number(td.dataset.col), row = Number(td.dataset.row);
+   td.classList.toggle('is-formula-reference', references.some(ref => col >= ref.minCol && col <= ref.maxCol && row >= ref.minRow && row <= ref.maxRow));
+  }
  }
 
  function refreshDisplay() {
@@ -429,6 +458,7 @@
   input.setSelectionRange(refSpan.end, refSpan.end);
   if (input === activeEditor) formulaInput.value = input.value;
   highlightRefRange(a, b);
+  updateFormulaReferences(input.value);
  }
 
  function startEdit(initialText = null) {
@@ -477,6 +507,7 @@
   input.addEventListener('input', () => {
    refSpan = null;
    formulaInput.value = input.value;
+   updateFormulaReferences(input.value);
   });
 
   input.addEventListener('keydown', e => {
@@ -500,6 +531,7 @@
   input.focus();
   if (initialText === null) input.select();
   else input.setSelectionRange(input.value.length, input.value.length);
+  updateFormulaReferences(input.value);
  }
 
  function moveSelection(dc, dr, extend = false) {
@@ -864,8 +896,10 @@
  });
 
  // 수식 입력줄
+ formulaInput.addEventListener('focus', () => updateFormulaReferences());
  formulaInput.addEventListener('input', () => {
   refSpan = null;
+  updateFormulaReferences(formulaInput.value);
  });
 
  formulaInput.addEventListener('keydown', e => {
@@ -905,6 +939,8 @@
    pushUndo();
    setCellValue(sheet, key, formulaInput.value);
    refreshDisplay();
+  } else {
+   updateFormulaReferences();
   }
  });
 
@@ -927,20 +963,30 @@
   if (isLocked) return;
   pushUndo();
   const sheet = activeSheet();
+  const atRow = selected.row + 1;
+  sheet.cells = insertRow(sheet.cells, atRow);
+  sheet.themes = insertRow(sheet.themes, atRow);
+  sheet.formats = insertRow(sheet.formats, atRow);
+  sheet.hiddenRows = sheet.hiddenRows.map(r => r >= atRow ? r + 1 : r);
   sheet.rows += 1;
   changed();
   renderGrid();
-  selectCell(selected.col, sheet.rows - 1);
+  selectCell(selected.col, atRow);
  });
 
  $('#addColBtn').addEventListener('click', () => {
   if (isLocked) return;
   pushUndo();
   const sheet = activeSheet();
+  const atCol = selected.col + 1;
+  sheet.cells = insertCol(sheet.cells, atCol);
+  sheet.themes = insertCol(sheet.themes, atCol);
+  sheet.formats = insertCol(sheet.formats, atCol);
+  sheet.hiddenCols = sheet.hiddenCols.map(c => c >= atCol ? c + 1 : c);
   sheet.cols += 1;
   changed();
   renderGrid();
-  selectCell(sheet.cols - 1, selected.row);
+  selectCell(atCol, selected.row);
  });
 
  $('#delRowBtn').addEventListener('click', () => {
