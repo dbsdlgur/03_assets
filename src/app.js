@@ -2,6 +2,7 @@
  const {
   indexToCol,
   formatCellRef,
+  formatNumber,
   formatWon,
   evaluateCell,
   parseCellRef,
@@ -373,7 +374,10 @@
    const res = evaluateCell(key, sheet.cells);
    const rawStr = String(sheet.cells[key] ?? '');
    const isWon = sheet.formats?.[key] === 'won' || (!rawStr.startsWith('=') && rawStr.includes('₩'));
-   const displayText = res.isNumber && isWon ? formatWon(res.numeric) : res.display;
+   const fractionDigits = rawStr.startsWith('=') && rawStr.includes('/') ? 0 : 6;
+   const displayText = res.isNumber
+    ? (isWon ? formatWon(res.numeric, fractionDigits) : formatNumber(res.numeric, fractionDigits))
+    : res.display;
    // 같은 텍스트를 대입해도 텍스트 노드가 교체되므로 실제 변경 때만 갱신한다.
    if (td.textContent !== displayText) td.textContent = displayText;
    td.classList.toggle('is-number', res.isNumber);

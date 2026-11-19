@@ -61,17 +61,19 @@
   return Number.isFinite(n) ? n : null;
  }
 
- function formatNumber(n) {
+ function formatNumber(n, maximumFractionDigits = 6) {
   if (!Number.isFinite(n)) return '#ERROR!';
   const cleaned = Math.abs(n) < 1e-12 ? 0 : Math.round(n * 1e10) / 1e10;
-  return cleaned.toLocaleString('en-US', { maximumFractionDigits: 6 });
+  const value = maximumFractionDigits === 0 && Math.abs(cleaned) < 0.5 ? 0 : cleaned;
+  return value.toLocaleString('en-US', { maximumFractionDigits });
  }
 
- function formatWon(n) {
+ function formatWon(n, maximumFractionDigits = 6) {
   if (!Number.isFinite(n)) return '#ERROR!';
   const cleaned = Math.abs(n) < 1e-12 ? 0 : Math.round(n * 1e10) / 1e10;
-  const absText = Math.abs(cleaned).toLocaleString('en-US', { maximumFractionDigits: 6 });
-  return cleaned < 0 ? `-₩ ${absText}` : `₩ ${absText}`;
+  const value = maximumFractionDigits === 0 && Math.abs(cleaned) < 0.5 ? 0 : cleaned;
+  const absText = Math.abs(value).toLocaleString('en-US', { maximumFractionDigits });
+  return value < 0 ? `-₩ ${absText}` : `₩ ${absText}`;
  }
 
  class FormulaError extends Error {
